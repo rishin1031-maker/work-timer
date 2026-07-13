@@ -206,9 +206,37 @@ input {
   background: var(--accent-soft);
 }
 
-.timeline li {
-  grid-template-columns: 1fr auto;
+.timeline li.stamp-row {
+  grid-template-columns: 1fr;
+  gap: 0.45rem;
+}
+
+.stamp-heading {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
+}
+
+.stamp-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.btn-delete {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: #8a4332;
+  border-radius: 0.4rem;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.btn-delete:hover {
+  background: #f3e4df;
+  border-color: #b9553f;
 }
 
 .edit-hint {
@@ -216,19 +244,23 @@ input {
   font-size: 0.88rem;
 }
 
-.time-input {
-  font-family: var(--mono);
-  font-size: 0.95rem;
-  border: 1px solid var(--border);
-  border-radius: 0.4rem;
-  background: var(--surface);
-  color: var(--text);
-  padding: 0.25rem 0.4rem;
+.time-scrubber {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 
-.time-input.invalid {
-  border-color: #b9553f;
-  outline: 2px solid rgba(185, 85, 63, 0.25);
+.time-scrubber:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.scrubber-ends {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--muted);
 }
 
 .timeline time,

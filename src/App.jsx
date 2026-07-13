@@ -25,6 +25,7 @@ export default function App() {
     breakOut,
     checkOut,
     resetDay,
+    deleteBreak,
     updateStamp,
   } = useWorkSession()
 
@@ -77,7 +78,11 @@ export default function App() {
       />
 
       <div className="panels">
-        <Timeline session={session} onUpdateStamp={updateStamp} />
+        <Timeline
+          session={session}
+          onUpdateStamp={updateStamp}
+          onDeleteBreak={deleteBreak}
+        />
         <History history={history} />
       </div>
     </div>

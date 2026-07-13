@@ -121,6 +121,17 @@ export function useWorkSession() {
     setNow(Date.now())
   }
 
+  function deleteBreak(index) {
+    updateToday((current) => {
+      if (!current.breaks[index]) return current
+      return {
+        ...current,
+        breaks: current.breaks.filter((_, i) => i !== index),
+      }
+    })
+    setNow(Date.now())
+  }
+
   function updateStamp(field, timeValue) {
     const iso = timeInputToIso(date, timeValue)
     if (!iso) return false
@@ -203,6 +214,7 @@ export function useWorkSession() {
     breakOut,
     checkOut,
     resetDay,
+    deleteBreak,
     updateStamp,
   }
 }
