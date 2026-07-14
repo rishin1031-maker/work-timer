@@ -1,4 +1,5 @@
 import { Controls } from './components/Controls'
+import { DayTimeline } from './components/DayTimeline'
 import { History } from './components/History'
 import { Stats } from './components/Stats'
 import { TargetHours } from './components/TargetHours'
@@ -19,6 +20,7 @@ export default function App() {
     checkedIn,
     checkedOut,
     history,
+    now,
     setTargetHours,
     checkIn,
     breakIn,
@@ -27,6 +29,7 @@ export default function App() {
     resetDay,
     deleteBreak,
     updateStamp,
+    updateBreakRange,
   } = useWorkSession()
 
   const status = !checkedIn
@@ -66,6 +69,14 @@ export default function App() {
         checkedOut={checkedOut}
       />
 
+      <DayTimeline
+        session={session}
+        now={now}
+        workMs={workMs}
+        breakMs={breakMs}
+        checkedIn={checkedIn}
+      />
+
       <Controls
         checkedIn={checkedIn}
         checkedOut={checkedOut}
@@ -81,6 +92,7 @@ export default function App() {
         <Timeline
           session={session}
           onUpdateStamp={updateStamp}
+          onUpdateBreakRange={updateBreakRange}
           onDeleteBreak={deleteBreak}
         />
         <History history={history} />

@@ -7,10 +7,18 @@ export function todayKey(date = new Date()) {
 
 export function formatClock(iso) {
   if (!iso) return '—'
-  return new Date(iso).toLocaleTimeString([], {
-    hour: '2-digit',
+  return new Date(iso).toLocaleTimeString('en-US', {
+    hour: 'numeric',
     minute: '2-digit',
+    hour12: true,
   })
+}
+
+export function formatMinutesClock(totalMinutes) {
+  const clamped = Math.max(0, Math.min(23 * 60 + 59, Math.round(totalMinutes)))
+  const d = new Date()
+  d.setHours(Math.floor(clamped / 60), clamped % 60, 0, 0)
+  return formatClock(d.toISOString())
 }
 
 export function isoToTimeInput(iso) {

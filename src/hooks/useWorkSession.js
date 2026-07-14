@@ -136,40 +136,78 @@ export function useWorkSession() {
     const iso = timeInputToIso(date, timeValue)
     if (!iso) return false
 
-    const current = store.sessions[date]
-    if (!current?.checkIn) return false
+    let applied = false
+    setStore((prev) => {
+      const current = prev.sessions[date]
+      if (!current?.checkIn) return prev
 
-    const next = {
-      ...current,
-      breaks: current.breaks.map((b) => ({ ...b })),
-    }
+      const next = {
+        ...current,
+        breaks: current.breaks.map((b) => ({ ...b })),
+      }
 
-    if (field.type === 'checkIn') {
-      next.checkIn = iso
-    } else if (field.type === 'checkOut') {
-      if (!current.checkOut) return false
-      next.checkOut = iso
-    } else if (field.type === 'breakStart') {
-      if (!next.breaks[field.index]) return false
-      next.breaks[field.index] = { ...next.breaks[field.index], start: iso }
-    } else if (field.type === 'breakEnd') {
-      if (!next.breaks[field.index]?.end) return false
-      next.breaks[field.index] = { ...next.breaks[field.index], end: iso }
-    } else {
-      return false
-    }
+      if (field.type === 'checkIn') {
+        next.checkIn = iso
+      } else if (field.type === 'checkOut') {
+        if (!current.checkOut) return prev
+        next.checkOut = iso
+      } else if (field.type === 'breakStart') {
+        if (!next.breaks[field.index]) return prev
+        next.breaks[field.index] = { ...next.breaks[field.index], start: iso }
+      } else if (field.type === 'breakEnd') {
+        if (!next.breaks[field.index]?.end) return prev
+        next.breaks[field.index] = { ...next.breaks[field.index], end: iso }
+      } else {
+        return prev
+      }
 
-    if (!isSessionOrderValid(next)) return false
+      if (!isSessionOrderValid(next)) return prev
 
-    setStore((prev) => ({
-      ...prev,
-      sessions: {
-        ...prev.sessions,
-        [date]: next,
-      },
-    }))
-    setNow(Date.now())
-    return true
+      applied = true
+      return {
+        ...prev,
+        sessions: {
+          ...prev.sessions,
+          [date]: next,
+        },
+      }
+    })
+
+    if (applied) setNow(Date.now())
+    return applied
+  }
+
+  function updateBreakRange(index, startTime, endTime) {
+    const startIso = timeInputToIso(date, startTime)
+    const endIso = timeInputToIso(date, endTime)
+    if (!startIso || !endIso) return false
+
+    let applied = false
+    setStore((prev) => {
+      const current = prev.sessions[date]
+      if (!current?.checkIn || !current.breaks[index]?.end) return prev
+
+      const next = {
+        ...current,
+        breaks: current.breaks.map((b, i) =>
+          i === index ? { ...b, start: startIso, end: endIso } : { ...b },
+        ),
+      }
+
+      if (!isSessionOrderValid(next)) return prev
+
+      applied = true
+      return {
+        ...prev,
+        sessions: {
+          ...prev.sessions,
+          [date]: next,
+        },
+      }
+    })
+
+    if (applied) setNow(Date.now())
+    return applied
   }
 
   const workMs = getWorkMs(session, now)
@@ -216,5 +254,6 @@ export function useWorkSession() {
     resetDay,
     deleteBreak,
     updateStamp,
+    updateBreakRange,
   }
 }
