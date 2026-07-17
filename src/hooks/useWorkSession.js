@@ -8,9 +8,10 @@ import {
   getWorkMs,
   isOnBreak,
   isSessionOrderValid,
+  shiftDayKey,
+  shiftWindow,
   stampNow,
   timeInputToIso,
-  todayKey,
 } from '../utils/time'
 
 export function useWorkSession() {
@@ -19,30 +20,36 @@ export function useWorkSession() {
   )
   const [now, setNow] = useState(() => Date.now())
 
-  const date = todayKey(new Date(now))
-  const session = store.sessions[date] ?? emptySession(store.targetHours)
+  const shift = store.shift === 'night' ? 'night' : 'day'
+  const theme = store.theme === 'dark' ? 'dark' : 'light'
+  const date = shiftDayKey(new Date(now), shift)
+  const window = shiftWindow(date, shift)
+  const session = store.sessions[date] ?? emptySession(store.targetHours, shift)
   const onBreak = isOnBreak(session)
   const checkedIn = Boolean(session.checkIn)
   const checkedOut = Boolean(session.checkOut)
   const autoBreakActive = onBreak && Boolean(session.breaks.at(-1)?.auto)
 
   useEffect(() => {
-    if (!checkedIn || checkedOut) return undefined
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
-  }, [checkedIn, checkedOut])
+  }, [])
 
   useEffect(() => {
     setStore((prev) => applySessionAutomations(prev, now))
-  }, [now])
+  }, [now, shift])
 
   useEffect(() => {
     saveStore(store)
   }, [store])
 
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+  }, [theme])
+
   function updateToday(updater) {
     setStore((prev) => {
-      const current = prev.sessions[date] ?? emptySession(prev.targetHours)
+      const current = prev.sessions[date] ?? emptySession(prev.targetHours, shift)
       const nextSession = updater(current)
       return {
         ...prev,
@@ -57,7 +64,7 @@ export function useWorkSession() {
   function setTargetHours(value) {
     const hours = Math.min(24, Math.max(0.25, Number(value) || 8))
     setStore((prev) => {
-      const current = prev.sessions[date] ?? emptySession(hours)
+      const current = prev.sessions[date] ?? emptySession(hours, shift)
       return {
         ...prev,
         targetHours: hours,
@@ -65,10 +72,27 @@ export function useWorkSession() {
           ...prev.sessions,
           [date]: checkedOut
             ? current
-            : { ...current, targetHours: hours },
+            : { ...current, targetHours: hours, shift },
         },
       }
     })
+  }
+
+  function setShift(nextShift) {
+    const value = nextShift === 'night' ? 'night' : 'day'
+    if (checkedIn && !checkedOut) return false
+    setStore((prev) => ({ ...prev, shift: value }))
+    setNow(Date.now())
+    return true
+  }
+
+  function setTheme(nextTheme) {
+    const value = nextTheme === 'dark' ? 'dark' : 'light'
+    setStore((prev) => ({ ...prev, theme: value }))
+  }
+
+  function toggleTheme() {
+    setTheme(theme === 'dark' ? 'light' : 'dark')
   }
 
   function checkIn() {
@@ -79,6 +103,7 @@ export function useWorkSession() {
       checkOut: null,
       breaks: [],
       targetHours: store.targetHours,
+      shift,
     }))
     setNow(Date.now())
   }
@@ -105,11 +130,33 @@ export function useWorkSession() {
     setNow(Date.now())
   }
 
-  function checkOut() {
-    if (!checkedIn || checkedOut || onBreak) return
+  function checkOut({ switchToShift } = {}) {
+    if (!checkedIn || checkedOut || onBreak) return false
     const stamp = stampNow()
-    updateToday((current) => ({ ...current, checkOut: stamp }))
+    const nextShift =
+      switchToShift === 'night' || switchToShift === 'day'
+        ? switchToShift
+        : null
+
+    setStore((prev) => {
+      const currentShift = prev.shift === 'night' ? 'night' : 'day'
+      const currentDate = shiftDayKey(new Date(), currentShift)
+      const current = prev.sessions[currentDate]
+      if (!current?.checkIn || current.checkOut || isOnBreak(current)) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        shift: nextShift ?? prev.shift,
+        sessions: {
+          ...prev.sessions,
+          [currentDate]: { ...current, checkOut: stamp },
+        },
+      }
+    })
     setNow(Date.now())
+    return true
   }
 
   function resetDay() {
@@ -133,7 +180,7 @@ export function useWorkSession() {
   }
 
   function updateStamp(field, timeValue) {
-    const iso = timeInputToIso(date, timeValue)
+    const iso = timeInputToIso(date, timeValue, shift)
     if (!iso) return false
 
     let applied = false
@@ -178,8 +225,8 @@ export function useWorkSession() {
   }
 
   function updateBreakRange(index, startTime, endTime) {
-    const startIso = timeInputToIso(date, startTime)
-    const endIso = timeInputToIso(date, endTime)
+    const startIso = timeInputToIso(date, startTime, shift)
+    const endIso = timeInputToIso(date, endTime, shift)
     if (!startIso || !endIso) return false
 
     let applied = false
@@ -234,6 +281,9 @@ export function useWorkSession() {
 
   return {
     date,
+    shift,
+    theme,
+    window,
     session,
     targetHours: store.targetHours,
     now,
@@ -247,6 +297,9 @@ export function useWorkSession() {
     checkedOut,
     history,
     setTargetHours,
+    setShift,
+    setTheme,
+    toggleTheme,
     checkIn,
     breakIn,
     breakOut,

@@ -1,15 +1,27 @@
+import { lazy, Suspense, useState } from 'react'
+import { AutoRules } from './components/AutoRules'
+import { DailyQuote } from './components/DailyQuote'
 import { Controls } from './components/Controls'
 import { DayTimeline } from './components/DayTimeline'
 import { History } from './components/History'
+import { Modal } from './components/Modal'
+import { PrefsBar } from './components/PrefsBar'
 import { Stats } from './components/Stats'
 import { TargetHours } from './components/TargetHours'
 import { Timeline } from './components/Timeline'
 import { useWorkSession } from './hooks/useWorkSession'
-import { formatDateLabel } from './utils/time'
+import { formatClock, formatDuration, formatShiftLabel } from './utils/time'
+
+const Companion = lazy(() =>
+  import('./components/Companion').then((mod) => ({ default: mod.Companion })),
+)
 
 export default function App() {
   const {
     date,
+    shift,
+    theme,
+    window,
     session,
     targetHours,
     workMs,
@@ -22,6 +34,8 @@ export default function App() {
     history,
     now,
     setTargetHours,
+    setShift,
+    toggleTheme,
     checkIn,
     breakIn,
     breakOut,
@@ -31,6 +45,11 @@ export default function App() {
     updateStamp,
     updateBreakRange,
   } = useWorkSession()
+
+  const [shiftBlockedOpen, setShiftBlockedOpen] = useState(false)
+  const [checkoutConfirmOpen, setCheckoutConfirmOpen] = useState(false)
+  const [pendingShift, setPendingShift] = useState(null)
+  const [checkoutFromShiftModal, setCheckoutFromShiftModal] = useState(false)
 
   const status = !checkedIn
     ? 'Not checked in'
@@ -44,21 +63,97 @@ export default function App() {
 
   const dayTargetHours = session.targetHours ?? targetHours
   const remainingMs = dayTargetHours * 60 * 60 * 1000 - workMs
+  const activeShiftLabel = session.shift === 'night' ? 'night shift' : 'day shift'
+  const pendingShiftLabel = pendingShift === 'night' ? 'night shift' : 'day shift'
+  const checkingOutEarly = remainingMs > 0
+  const estCheckout = checkedOut ? session.checkOut : estimatedCheckout
+
+  function closeShiftBlocked() {
+    setShiftBlockedOpen(false)
+    setPendingShift(null)
+  }
+
+  function handleShiftChange(nextShift) {
+    if (nextShift === shift) return
+    if (checkedIn && !checkedOut) {
+      setPendingShift(nextShift)
+      setShiftBlockedOpen(true)
+      return
+    }
+    setShift(nextShift)
+  }
+
+  function handleCheckoutRequest() {
+    if (!checkedIn || checkedOut || onBreak) return
+    setCheckoutFromShiftModal(false)
+    setPendingShift(null)
+    setCheckoutConfirmOpen(true)
+  }
+
+  function handleCheckoutFromShiftModal() {
+    if (onBreak) return
+    setShiftBlockedOpen(false)
+    setCheckoutFromShiftModal(true)
+    setCheckoutConfirmOpen(true)
+  }
+
+  function cancelCheckoutConfirm() {
+    setCheckoutConfirmOpen(false)
+    if (checkoutFromShiftModal && pendingShift) {
+      setShiftBlockedOpen(true)
+    } else {
+      setPendingShift(null)
+    }
+    setCheckoutFromShiftModal(false)
+  }
+
+  function confirmCheckout() {
+    const switchTo = checkoutFromShiftModal ? pendingShift : null
+    setCheckoutConfirmOpen(false)
+    setCheckoutFromShiftModal(false)
+    setPendingShift(null)
+    checkOut(switchTo ? { switchToShift: switchTo } : undefined)
+  }
+
+  const companionMood = !checkedIn
+    ? 'idle'
+    : checkedOut
+      ? 'done'
+      : onBreak
+        ? 'break'
+        : 'working'
 
   return (
     <div className="app">
       <header className="header">
         <div>
           <p className="brand">Work Timer</p>
-          <h1>{formatDateLabel(date)}</h1>
+          <h1>{formatShiftLabel(date, shift)}</h1>
           <p className="status">{status}</p>
         </div>
-        <TargetHours
-          value={targetHours}
-          onChange={setTargetHours}
-          disabled={checkedOut}
-        />
+        <div className="header-aside">
+          <PrefsBar
+            shift={shift}
+            theme={theme}
+            onShiftChange={handleShiftChange}
+            onThemeToggle={toggleTheme}
+          />
+          <TargetHours
+            value={targetHours}
+            onChange={setTargetHours}
+            disabled={checkedOut}
+          />
+        </div>
       </header>
+
+      <DailyQuote
+        dateKey={date}
+        companion={
+          <Suspense fallback={<div className="companion companion-fallback" />}>
+            <Companion mood={companionMood} theme={theme} />
+          </Suspense>
+        }
+      />
 
       <Stats
         workMs={workMs}
@@ -75,6 +170,9 @@ export default function App() {
         workMs={workMs}
         breakMs={breakMs}
         checkedIn={checkedIn}
+        windowStart={window.start}
+        windowEnd={window.end}
+        shift={shift}
       />
 
       <Controls
@@ -84,9 +182,11 @@ export default function App() {
         onCheckIn={checkIn}
         onBreakIn={breakIn}
         onBreakOut={breakOut}
-        onCheckOut={checkOut}
+        onCheckOut={handleCheckoutRequest}
         onReset={resetDay}
       />
+
+      <AutoRules shift={shift} />
 
       <div className="panels">
         <Timeline
@@ -97,6 +197,77 @@ export default function App() {
         />
         <History history={history} />
       </div>
+
+      <Modal
+        open={shiftBlockedOpen}
+        title="Cannot change shift"
+        cancelLabel="Got it"
+        confirmLabel="Check out"
+        danger
+        confirmDisabled={onBreak}
+        onCancel={closeShiftBlocked}
+        onConfirm={handleCheckoutFromShiftModal}
+      >
+        <p>
+          You are currently checked in on the {activeShiftLabel}. Check out
+          first before switching to {pendingShiftLabel}, so today’s session
+          stays on the correct timeline.
+        </p>
+        {onBreak ? (
+          <p className="modal-follow">
+            You are on break right now. Break out first, then you can check out
+            and change shift.
+          </p>
+        ) : (
+          <p className="modal-follow">
+            You can check out here, then the app will switch to {pendingShiftLabel}.
+          </p>
+        )}
+      </Modal>
+
+      <Modal
+        open={checkoutConfirmOpen}
+        title={checkingOutEarly ? 'Checking out early' : 'Confirm check out'}
+        confirmLabel={
+          checkoutFromShiftModal && pendingShift
+            ? 'Check out & switch'
+            : 'Check out'
+        }
+        cancelLabel="Cancel"
+        danger
+        onConfirm={confirmCheckout}
+        onCancel={cancelCheckoutConfirm}
+      >
+        {checkingOutEarly ? (
+          <>
+            <p>
+              You still have{' '}
+              <strong className="modal-emphasis">
+                {formatDuration(remainingMs)}
+              </strong>{' '}
+              of target work time left
+              {estCheckout ? (
+                <>
+                  {' '}
+                  (estimated check out {formatClock(estCheckout)})
+                </>
+              ) : null}
+              .
+            </p>
+            <p className="modal-follow">
+              {checkoutFromShiftModal && pendingShift
+                ? `End today’s session and switch to ${pendingShiftLabel}?`
+                : 'End today’s session anyway? Work and break totals will stop updating.'}
+            </p>
+          </>
+        ) : (
+          <p>
+            {checkoutFromShiftModal && pendingShift
+              ? `End today’s session and switch to ${pendingShiftLabel}?`
+              : 'End today’s session now? Work and break totals will stop updating, and you’ll need to start a new day to check in again.'}
+          </p>
+        )}
+      </Modal>
     </div>
   )
 }

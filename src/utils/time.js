@@ -5,6 +5,34 @@ export function todayKey(date = new Date()) {
   return `${y}-${m}-${d}`
 }
 
+/** Day shift: midnight→midnight. Night shift: noon→noon (12pm–12pm). */
+export function shiftDayKey(date = new Date(), shift = 'day') {
+  const d = new Date(date)
+  if (shift === 'night' && d.getHours() < 12) {
+    d.setDate(d.getDate() - 1)
+  }
+  return todayKey(d)
+}
+
+export function shiftWindow(dateKey, shift = 'day') {
+  const [y, m, d] = dateKey.split('-').map(Number)
+  if (shift === 'night') {
+    return {
+      start: new Date(y, m - 1, d, 12, 0, 0, 0),
+      end: new Date(y, m - 1, d + 1, 12, 0, 0, 0),
+    }
+  }
+  return {
+    start: new Date(y, m - 1, d, 0, 0, 0, 0),
+    end: new Date(y, m - 1, d + 1, 0, 0, 0, 0),
+  }
+}
+
+export function endOfShiftIso(dateKey, shift = 'day') {
+  const { end } = shiftWindow(dateKey, shift)
+  return stampAt(end.getTime() - 60 * 1000)
+}
+
 export function formatClock(iso) {
   if (!iso) return '—'
   return new Date(iso).toLocaleTimeString('en-US', {
@@ -21,6 +49,21 @@ export function formatMinutesClock(totalMinutes) {
   return formatClock(d.toISOString())
 }
 
+export function formatShiftLabel(dateKey, shift = 'day') {
+  const { start, end } = shiftWindow(dateKey, shift)
+  const startLabel = start.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  })
+  if (shift === 'day') return startLabel
+  const endLabel = end.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  })
+  return `${startLabel} → ${endLabel}`
+}
+
 export function isoToTimeInput(iso) {
   if (!iso) return ''
   const d = new Date(iso)
@@ -29,10 +72,13 @@ export function isoToTimeInput(iso) {
   return `${h}:${m}`
 }
 
-export function timeInputToIso(dateKey, timeValue) {
+export function timeInputToIso(dateKey, timeValue, shift = 'day') {
   if (!dateKey || !timeValue) return null
   const [y, mo, d] = dateKey.split('-').map(Number)
   const [h = 0, mi = 0] = timeValue.split(':').map(Number)
+  if (shift === 'night' && h < 12) {
+    return new Date(y, mo - 1, d + 1, h, mi, 0, 0).toISOString()
+  }
   return new Date(y, mo - 1, d, h, mi, 0, 0).toISOString()
 }
 
@@ -48,11 +94,6 @@ export function stampAt(ms) {
   return d.toISOString()
 }
 
-export function endOfDayIso(dateKey) {
-  const [y, mo, d] = dateKey.split('-').map(Number)
-  return new Date(y, mo - 1, d, 23, 59, 0, 0).toISOString()
-}
-
 /** Max continuous work before an automatic break is started. */
 export const CONTINUOUS_WORK_LIMIT_MS = 8 * 60 * 60 * 1000
 
@@ -61,7 +102,6 @@ export function isOnBreak(session) {
   return Boolean(last && last.start && !last.end)
 }
 
-/** Start of the current continuous work stretch (check-in or last break end). */
 export function getContinuousWorkStart(session) {
   if (!session?.checkIn) return null
   let start = session.checkIn
@@ -78,20 +118,20 @@ export function getContinuousWorkMs(session, now = Date.now()) {
   return Math.max(0, now - new Date(start).getTime())
 }
 
-/**
- * Close open sessions from previous days at 23:59, and auto break-in
- * after CONTINUOUS_WORK_LIMIT_MS of uninterrupted work today.
- */
 export function applySessionAutomations(store, nowMs = Date.now()) {
-  const today = todayKey(new Date(nowMs))
+  const currentShift = store.shift === 'night' ? 'night' : 'day'
+  const currentToday = shiftDayKey(new Date(nowMs), currentShift)
   let changed = false
   const sessions = { ...store.sessions }
 
   for (const [key, session] of Object.entries(sessions)) {
     if (!session?.checkIn || session.checkOut) continue
-    if (key >= today) continue
 
-    const endStamp = endOfDayIso(key)
+    const sessionShift = session.shift === 'night' ? 'night' : 'day'
+    const sessionToday = shiftDayKey(new Date(nowMs), sessionShift)
+    if (key >= sessionToday) continue
+
+    const endStamp = endOfShiftIso(key, sessionShift)
     const breaks = (session.breaks ?? []).map((b) => ({ ...b }))
     const last = breaks[breaks.length - 1]
     if (last && last.start && !last.end) {
@@ -102,23 +142,31 @@ export function applySessionAutomations(store, nowMs = Date.now()) {
 
     sessions[key] = {
       ...session,
+      shift: sessionShift,
       breaks,
       checkOut: endStamp,
     }
     changed = true
   }
 
-  const session = sessions[today]
-  if (session?.checkIn && !session.checkOut && !isOnBreak(session)) {
-    const continuousMs = getContinuousWorkMs(session, nowMs)
+  const session = sessions[currentToday]
+  if (session?.checkIn && !session.shift) {
+    sessions[currentToday] = { ...session, shift: currentShift }
+    changed = true
+  }
+
+  const active = sessions[currentToday]
+  if (active?.checkIn && !active.checkOut && !isOnBreak(active)) {
+    const continuousMs = getContinuousWorkMs(active, nowMs)
     if (continuousMs >= CONTINUOUS_WORK_LIMIT_MS) {
-      const start = getContinuousWorkStart(session)
+      const start = getContinuousWorkStart(active)
       const autoAt = new Date(start).getTime() + CONTINUOUS_WORK_LIMIT_MS
       const stamp = stampAt(Math.min(autoAt, nowMs))
-      sessions[today] = {
-        ...session,
+      sessions[currentToday] = {
+        ...active,
+        shift: active.shift === 'night' ? 'night' : currentShift,
         breaks: [
-          ...(session.breaks ?? []).map((b) => ({ ...b })),
+          ...(active.breaks ?? []).map((b) => ({ ...b })),
           { start: stamp, end: null, auto: true },
         ],
       }
@@ -141,7 +189,7 @@ export function formatDuration(ms) {
 export function formatDateLabel(dateKey) {
   const [y, m, d] = dateKey.split('-').map(Number)
   const date = new Date(y, m - 1, d)
-  return date.toLocaleDateString([], {
+  return date.toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',

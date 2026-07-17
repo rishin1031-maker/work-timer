@@ -1,4 +1,4 @@
-import { formatClock, formatDateLabel, formatDuration } from '../utils/time'
+import { formatClock, formatDuration, formatShiftLabel } from '../utils/time'
 
 export function History({ history }) {
   if (history.length === 0) {
@@ -14,21 +14,26 @@ export function History({ history }) {
     <section className="panel">
       <h2>Last 30 days</h2>
       <ul className="history">
-        {history.map(({ date, session, workMs, breakMs }) => (
-          <li key={date}>
-            <div className="history-top">
-              <strong>{formatDateLabel(date)}</strong>
-              <span className="history-work">{formatDuration(workMs)}</span>
-            </div>
-            <div className="history-meta">
-              <span>
-                {formatClock(session.checkIn)}
-                {session.checkOut ? ` → ${formatClock(session.checkOut)}` : ' · in progress'}
-              </span>
-              <span>Break {formatDuration(breakMs)}</span>
-            </div>
-          </li>
-        ))}
+        {history.map(({ date, session, workMs, breakMs }) => {
+          const sessionShift = session.shift === 'night' ? 'night' : 'day'
+          return (
+            <li key={date}>
+              <div className="history-top">
+                <strong>{formatShiftLabel(date, sessionShift)}</strong>
+                <span className="history-work">{formatDuration(workMs)}</span>
+              </div>
+              <div className="history-meta">
+                <span>
+                  {formatClock(session.checkIn)}
+                  {session.checkOut ? ` → ${formatClock(session.checkOut)}` : ' · in progress'}
+                  {' · '}
+                  {sessionShift === 'night' ? 'Night' : 'Day'}
+                </span>
+                <span>Break {formatDuration(breakMs)}</span>
+              </div>
+            </li>
+          )
+        })}
       </ul>
     </section>
   )
