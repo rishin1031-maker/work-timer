@@ -5,10 +5,13 @@ import { Controls } from './components/Controls'
 import { DayTimeline } from './components/DayTimeline'
 import { History } from './components/History'
 import { Modal } from './components/Modal'
+import { OverviewPanel } from './components/OverviewPanel'
 import { PrefsBar } from './components/PrefsBar'
 import { Stats } from './components/Stats'
-import { TargetHours } from './components/TargetHours'
 import { Timeline } from './components/Timeline'
+import { useMediaQuery } from './hooks/useMediaQuery'
+import { useSessionShortcuts } from './hooks/useSessionShortcuts'
+import { useSoftReminder } from './hooks/useSoftReminder'
 import { useWorkSession } from './hooks/useWorkSession'
 import { formatClock, formatDuration, formatShiftLabel } from './utils/time'
 
@@ -46,10 +49,14 @@ export default function App() {
     updateBreakRange,
   } = useWorkSession()
 
+  const isPhone = useMediaQuery('(max-width: 720px)')
+  const isWide = useMediaQuery('(min-width: 1100px)')
   const [shiftBlockedOpen, setShiftBlockedOpen] = useState(false)
   const [checkoutConfirmOpen, setCheckoutConfirmOpen] = useState(false)
   const [pendingShift, setPendingShift] = useState(null)
   const [checkoutFromShiftModal, setCheckoutFromShiftModal] = useState(false)
+  const [mobilePanel, setMobilePanel] = useState('today')
+  const [prefsOpen, setPrefsOpen] = useState(false)
 
   const status = !checkedIn
     ? 'Not checked in'
@@ -115,6 +122,25 @@ export default function App() {
     checkOut(switchTo ? { switchToShift: switchTo } : undefined)
   }
 
+  useSessionShortcuts({
+    checkedIn,
+    checkedOut,
+    onBreak,
+    onCheckIn: checkIn,
+    onBreakIn: breakIn,
+    onBreakOut: breakOut,
+    onCheckOut: handleCheckoutRequest,
+    enabled: !shiftBlockedOpen && !checkoutConfirmOpen,
+  })
+
+  const { toast, dismissToast } = useSoftReminder({
+    remainingMs,
+    checkedIn,
+    checkedOut,
+    onBreak,
+    dateKey: date,
+  })
+
   const companionMood = !checkedIn
     ? 'idle'
     : checkedOut
@@ -123,80 +149,181 @@ export default function App() {
         ? 'break'
         : 'working'
 
+  const todayPanel = (
+    <Timeline
+      session={session}
+      onUpdateStamp={updateStamp}
+      onUpdateBreakRange={updateBreakRange}
+      onDeleteBreak={deleteBreak}
+    />
+  )
+
+  const historyPanel = (
+    <History
+      history={history}
+      today={{ date, session }}
+      todayWorkMs={workMs}
+      todayBreakMs={breakMs}
+      todayTargetHours={dayTargetHours}
+    />
+  )
+
   return (
-    <div className="app">
-      <header className="header">
-        <div>
-          <p className="brand">Work Timer</p>
-          <h1>{formatShiftLabel(date, shift)}</h1>
-          <p className="status">{status}</p>
+    <div
+      className={`app${isPhone ? ' is-phone' : ''}${isWide ? ' is-wide' : ''}`}
+    >
+      <div className="top-chrome">
+        <div className="top-chrome-row">
+          <div className="header-title">
+            <p className="brand">Work Timer</p>
+            <h1>{formatShiftLabel(date, shift)}</h1>
+            <p className="status">{status}</p>
+          </div>
+
+          {isPhone ? (
+            <button
+              type="button"
+              className="prefs-disclosure"
+              onClick={() => setPrefsOpen((v) => !v)}
+              aria-expanded={prefsOpen}
+            >
+              {prefsOpen ? 'Hide settings' : 'Settings'}
+            </button>
+          ) : null}
+
+          <div className="controls-shell">
+            <Controls
+              checkedIn={checkedIn}
+              checkedOut={checkedOut}
+              onBreak={onBreak}
+              onCheckIn={checkIn}
+              onBreakIn={breakIn}
+              onBreakOut={breakOut}
+              onCheckOut={handleCheckoutRequest}
+              onReset={resetDay}
+            />
+          </div>
+
+          <div
+            className={`header-aside${isPhone && !prefsOpen ? ' is-collapsed' : ''}`}
+          >
+            <PrefsBar
+              shift={shift}
+              theme={theme}
+              onShiftChange={handleShiftChange}
+              onThemeToggle={toggleTheme}
+            />
+          </div>
         </div>
-        <div className="header-aside">
-          <PrefsBar
-            shift={shift}
-            theme={theme}
-            onShiftChange={handleShiftChange}
-            onThemeToggle={toggleTheme}
-          />
-          <TargetHours
-            value={targetHours}
-            onChange={setTargetHours}
-            disabled={checkedOut}
-          />
-        </div>
-      </header>
-
-      <DailyQuote
-        dateKey={date}
-        companion={
-          <Suspense fallback={<div className="companion companion-fallback" />}>
-            <Companion mood={companionMood} theme={theme} />
-          </Suspense>
-        }
-      />
-
-      <Stats
-        workMs={workMs}
-        breakMs={breakMs}
-        remainingMs={remainingMs}
-        estimatedCheckout={checkedOut ? session.checkOut : estimatedCheckout}
-        checkedIn={checkedIn}
-        checkedOut={checkedOut}
-      />
-
-      <DayTimeline
-        session={session}
-        now={now}
-        workMs={workMs}
-        breakMs={breakMs}
-        checkedIn={checkedIn}
-        windowStart={window.start}
-        windowEnd={window.end}
-        shift={shift}
-      />
-
-      <Controls
-        checkedIn={checkedIn}
-        checkedOut={checkedOut}
-        onBreak={onBreak}
-        onCheckIn={checkIn}
-        onBreakIn={breakIn}
-        onBreakOut={breakOut}
-        onCheckOut={handleCheckoutRequest}
-        onReset={resetDay}
-      />
-
-      <AutoRules shift={shift} />
-
-      <div className="panels">
-        <Timeline
-          session={session}
-          onUpdateStamp={updateStamp}
-          onUpdateBreakRange={updateBreakRange}
-          onDeleteBreak={deleteBreak}
-        />
-        <History history={history} />
       </div>
+
+      <div className="workspace">
+        {isWide ? (
+          <aside className="rail rail-today" aria-label="Today’s stamps">
+            {todayPanel}
+          </aside>
+        ) : null}
+
+        <main className="main-flow">
+          <Stats
+            workMs={workMs}
+            breakMs={breakMs}
+            remainingMs={remainingMs}
+            estimatedCheckout={
+              checkedOut ? session.checkOut : estimatedCheckout
+            }
+            checkedIn={checkedIn}
+            checkedOut={checkedOut}
+          />
+
+          <DayTimeline
+            session={session}
+            now={now}
+            workMs={workMs}
+            breakMs={breakMs}
+            checkedIn={checkedIn}
+            windowStart={window.start}
+            windowEnd={window.end}
+            shift={shift}
+          />
+
+          <DailyQuote
+            dateKey={date}
+            companion={
+              <Suspense
+                fallback={<div className="companion companion-fallback" />}
+              >
+                <Companion mood={companionMood} theme={theme} />
+              </Suspense>
+            }
+          />
+
+          <OverviewPanel
+            now={now}
+            dateKey={date}
+            workMs={workMs}
+            breakMs={breakMs}
+            remainingMs={remainingMs}
+            targetHours={dayTargetHours}
+            prefTargetHours={targetHours}
+            onTargetHoursChange={setTargetHours}
+            targetHoursDisabled={checkedOut}
+            history={history}
+            checkedIn={checkedIn}
+          />
+
+          {isPhone ? (
+            <div
+              className="mobile-panel-tabs"
+              role="tablist"
+              aria-label="Session details"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mobilePanel === 'today'}
+                className={`mobile-tab${mobilePanel === 'today' ? ' active' : ''}`}
+                onClick={() => setMobilePanel('today')}
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mobilePanel === 'history'}
+                className={`mobile-tab${mobilePanel === 'history' ? ' active' : ''}`}
+                onClick={() => setMobilePanel('history')}
+              >
+                History
+              </button>
+            </div>
+          ) : null}
+
+          {!isWide ? (
+            <div className={`panels${isPhone ? ` show-${mobilePanel}` : ''}`}>
+              <div className="panel-slot panel-today">{todayPanel}</div>
+              <div className="panel-slot panel-history">{historyPanel}</div>
+            </div>
+          ) : null}
+
+          <AutoRules shift={shift} />
+        </main>
+
+        {isWide ? (
+          <aside className="rail rail-history" aria-label="Last 30 days">
+            {historyPanel}
+          </aside>
+        ) : null}
+      </div>
+
+      {toast ? (
+        <div className="soft-toast" role="status">
+          <p>{toast}</p>
+          <button type="button" className="soft-toast-dismiss" onClick={dismissToast}>
+            Dismiss
+          </button>
+        </div>
+      ) : null}
 
       <Modal
         open={shiftBlockedOpen}

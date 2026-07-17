@@ -1,17 +1,29 @@
+import { usePillThumb } from '../hooks/usePillThumb'
+
 export function PrefsBar({ shift, theme, onShiftChange, onThemeToggle }) {
+  const { trackRef, thumbRef } = usePillThumb(shift, [shift])
+
   return (
     <div className="prefs-bar">
-      <div className="pref-group" role="group" aria-label="Shift">
+      <div
+        className="pref-group"
+        role="group"
+        aria-label="Shift"
+        ref={trackRef}
+      >
+        <span className="pill-thumb" ref={thumbRef} aria-hidden="true" />
         <button
           type="button"
-          className={`pref-btn${shift === 'day' ? ' active' : ''}`}
+          data-pill="day"
+          className={`pref-btn pref-btn-shift${shift === 'day' ? ' active' : ''}`}
           onClick={() => onShiftChange('day')}
         >
           Day shift
         </button>
         <button
           type="button"
-          className={`pref-btn${shift === 'night' ? ' active' : ''}`}
+          data-pill="night"
+          className={`pref-btn pref-btn-shift${shift === 'night' ? ' active' : ''}`}
           onClick={() => onShiftChange('night')}
         >
           Night shift

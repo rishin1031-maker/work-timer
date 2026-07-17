@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { emptySession, loadStore, saveStore } from '../utils/storage'
+import { emptySession, loadStore, saveStore, clampTargetHours } from '../utils/storage'
 import {
   applySessionAutomations,
   getBreakMs,
@@ -62,7 +62,7 @@ export function useWorkSession() {
   }
 
   function setTargetHours(value) {
-    const hours = Math.min(24, Math.max(0.25, Number(value) || 8))
+    const hours = clampTargetHours(value)
     setStore((prev) => {
       const current = prev.sessions[date] ?? emptySession(hours, shift)
       return {

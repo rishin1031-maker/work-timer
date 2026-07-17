@@ -13,15 +13,15 @@ export function Stats({
 
   return (
     <div className="stats">
-      <div className="stat">
+      <div className="stat tone-navy">
         <span className="stat-label">Work time</span>
         <span className="stat-value">{formatDuration(workMs)}</span>
       </div>
-      <div className="stat">
+      <div className="stat tone-mint">
         <span className="stat-label">Break time</span>
         <span className="stat-value">{formatDuration(breakMs)}</span>
       </div>
-      <div className="stat">
+      <div className="stat tone-blue">
         <span className="stat-label">{remainingLabel}</span>
         <span className={`stat-value${overtime ? ' overtime' : ''}`}>
           {checkedIn
@@ -29,7 +29,7 @@ export function Stats({
             : '—'}
         </span>
       </div>
-      <div className="stat">
+      <div className="stat tone-pink">
         <span className="stat-label">
           {checkedOut ? 'Checked out' : 'Est. check out'}
         </span>
