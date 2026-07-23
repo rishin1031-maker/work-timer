@@ -74,6 +74,7 @@ export function DayTimeline({
   windowStart,
   windowEnd,
   shift,
+  compact = false,
 }) {
   const rangeStart = windowStart.getTime()
   const rangeEnd = windowEnd.getTime()
@@ -85,21 +86,38 @@ export function DayTimeline({
   const marks = hourMarks(rangeStart, shift)
 
   return (
-    <section className="panel day-timeline">
+    <section className={`day-timeline${compact ? ' is-compact' : ''}`}>
       <div className="day-timeline-header">
         <div>
-          <h2>24-hour timeline</h2>
+          <h3>{compact ? '24-hour view' : '24-hour timeline'}</h3>
           <p className="muted timeline-sub">
-            {shift === 'night' ? 'Night shift · 12 PM → 12 PM' : 'Day shift · 12 AM → 12 AM'}
+            {shift === 'night'
+              ? 'Night shift · 12 PM → 12 PM'
+              : 'Day shift · 12 AM → 12 AM'}
           </p>
         </div>
-        <div className="day-timeline-legend">
-          <span className="legend-item work">Work {formatDuration(workMs)}</span>
-          <span className="legend-item break">Break {formatDuration(breakMs)}</span>
-        </div>
+        {!compact ? (
+          <div className="day-timeline-legend">
+            <span className="legend-item work">
+              Work {formatDuration(workMs)}
+            </span>
+            <span className="legend-item break">
+              Break {formatDuration(breakMs)}
+            </span>
+          </div>
+        ) : (
+          <div className="day-timeline-legend">
+            <span className="legend-item work">Work</span>
+            <span className="legend-item break">Break</span>
+          </div>
+        )}
       </div>
 
-      <div className="day-timeline-bar fixed-day" role="img" aria-label="24 hour work and break timeline">
+      <div
+        className="day-timeline-bar fixed-day"
+        role="img"
+        aria-label="24 hour work and break timeline"
+      >
         {segments.map((segment) => {
           const left = ((segment.start - rangeStart) / span) * 100
           const width = ((segment.end - segment.start) / span) * 100
@@ -113,13 +131,20 @@ export function DayTimeline({
           )
         })}
         {now >= rangeStart && now <= rangeEnd ? (
-          <div className="now-marker" style={{ left: `${nowPct}%` }} title="Now" />
+          <div
+            className="now-marker"
+            style={{ left: `${nowPct}%` }}
+            title="Now"
+          />
         ) : null}
       </div>
 
       <div className="day-timeline-marks">
         {marks.map((mark) => (
-          <span key={`${mark.pct}-${mark.label}`} style={{ left: `${mark.pct}%` }}>
+          <span
+            key={`${mark.pct}-${mark.label}`}
+            style={{ left: `${mark.pct}%` }}
+          >
             {mark.label}
           </span>
         ))}

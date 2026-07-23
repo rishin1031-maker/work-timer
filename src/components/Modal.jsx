@@ -10,6 +10,7 @@ export function Modal({
   onCancel,
   danger = false,
   confirmDisabled = false,
+  elevated = false,
 }) {
   const titleId = useId()
   const dialogRef = useRef(null)
@@ -37,7 +38,10 @@ export function Modal({
   if (!open) return null
 
   return (
-    <div className="modal-backdrop" onClick={() => (onCancel ?? onConfirm)?.()}>
+    <div
+      className={`modal-backdrop${elevated ? ' modal-backdrop-elevated' : ''}`}
+      onClick={() => (onCancel ?? onConfirm)?.()}
+    >
       <div
         className="modal"
         role="dialog"

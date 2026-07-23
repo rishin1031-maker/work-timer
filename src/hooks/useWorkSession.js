@@ -5,11 +5,13 @@ import {
   getBreakMs,
   getContinuousWorkMs,
   getEstimatedCheckout,
+  getOpenBreakMs,
   getWorkMs,
   isOnBreak,
   isSessionOrderValid,
   shiftDayKey,
   shiftWindow,
+  stampAt,
   stampNow,
   timeInputToIso,
 } from '../utils/time'
@@ -120,8 +122,11 @@ export function useWorkSession() {
 
   function breakOut() {
     if (!onBreak) return
-    const stamp = stampNow()
+    // Use a precise timestamp so resume within the same minute still closes
+    // the open break (stampNow() truncates seconds).
+    const stamp = new Date().toISOString()
     updateToday((current) => {
+      if (!isOnBreak(current)) return current
       const breaks = current.breaks.map((b, i) =>
         i === current.breaks.length - 1 && !b.end ? { ...b, end: stamp } : b,
       )
@@ -131,7 +136,7 @@ export function useWorkSession() {
   }
 
   function checkOut({ switchToShift } = {}) {
-    if (!checkedIn || checkedOut || onBreak) return false
+    if (!checkedIn || checkedOut) return false
     const stamp = stampNow()
     const nextShift =
       switchToShift === 'night' || switchToShift === 'day'
@@ -142,8 +147,14 @@ export function useWorkSession() {
       const currentShift = prev.shift === 'night' ? 'night' : 'day'
       const currentDate = shiftDayKey(new Date(), currentShift)
       const current = prev.sessions[currentDate]
-      if (!current?.checkIn || current.checkOut || isOnBreak(current)) {
+      if (!current?.checkIn || current.checkOut) {
         return prev
+      }
+
+      const breaks = (current.breaks ?? []).map((b) => ({ ...b }))
+      const last = breaks[breaks.length - 1]
+      if (last && last.start && !last.end) {
+        last.end = stamp
       }
 
       return {
@@ -151,7 +162,7 @@ export function useWorkSession() {
         shift: nextShift ?? prev.shift,
         sessions: {
           ...prev.sessions,
-          [currentDate]: { ...current, checkOut: stamp },
+          [currentDate]: { ...current, breaks, checkOut: stamp },
         },
       }
     })
@@ -168,6 +179,41 @@ export function useWorkSession() {
     setNow(Date.now())
   }
 
+  function restoreSession(sessionSnapshot) {
+    if (!sessionSnapshot?.checkIn) return
+    setStore((prev) => ({
+      ...prev,
+      sessions: {
+        ...prev.sessions,
+        [date]: {
+          ...sessionSnapshot,
+          breaks: (sessionSnapshot.breaks ?? []).map((b) => ({ ...b })),
+        },
+      },
+    }))
+    setNow(Date.now())
+  }
+
+  function replaceTodaySession(nextSession) {
+    if (!nextSession?.checkIn) return false
+    if (!isSessionOrderValid(nextSession)) return false
+
+    setStore((prev) => ({
+      ...prev,
+      sessions: {
+        ...prev.sessions,
+        [date]: {
+          ...nextSession,
+          breaks: (nextSession.breaks ?? []).map((b) => ({ ...b })),
+          targetHours: nextSession.targetHours ?? prev.targetHours,
+          shift: nextSession.shift === 'night' ? 'night' : 'day',
+        },
+      },
+    }))
+    setNow(Date.now())
+    return true
+  }
+
   function deleteBreak(index) {
     updateToday((current) => {
       if (!current.breaks[index]) return current
@@ -177,6 +223,61 @@ export function useWorkSession() {
       }
     })
     setNow(Date.now())
+  }
+
+  function addBreak() {
+    if (!checkedIn) return false
+
+    let applied = false
+    setStore((prev) => {
+      const current = prev.sessions[date] ?? emptySession(prev.targetHours, shift)
+      if (!current.checkIn) return prev
+
+      const stamps = []
+      stamps.push(new Date(current.checkIn).getTime())
+      for (const b of current.breaks ?? []) {
+        if (b.start) stamps.push(new Date(b.start).getTime())
+        if (b.end) stamps.push(new Date(b.end).getTime())
+      }
+      if (current.checkOut) stamps.push(new Date(current.checkOut).getTime())
+
+      const lastStamp = Math.max(...stamps)
+      const endCap = current.checkOut
+        ? new Date(current.checkOut).getTime()
+        : Date.now()
+      const gapEnd = endCap
+      const gapStart = lastStamp
+
+      if (gapEnd - gapStart < 2 * 60 * 1000) return prev
+
+      const breakEnd = Math.min(gapEnd - 60 * 1000, gapStart + 16 * 60 * 1000)
+      const breakStart = Math.max(gapStart + 60 * 1000, breakEnd - 15 * 60 * 1000)
+      if (breakEnd <= breakStart) return prev
+
+      const next = {
+        ...current,
+        breaks: [
+          ...(current.breaks ?? []).map((b) => ({ ...b })),
+          {
+            start: stampAt(breakStart),
+            end: stampAt(breakEnd),
+          },
+        ],
+      }
+
+      if (!isSessionOrderValid(next)) return prev
+      applied = true
+      return {
+        ...prev,
+        sessions: {
+          ...prev.sessions,
+          [date]: next,
+        },
+      }
+    })
+
+    if (applied) setNow(Date.now())
+    return applied
   }
 
   function updateStamp(field, timeValue) {
@@ -259,6 +360,7 @@ export function useWorkSession() {
 
   const workMs = getWorkMs(session, now)
   const breakMs = getBreakMs(session.breaks, now)
+  const openBreakMs = getOpenBreakMs(session, now)
   const continuousWorkMs = getContinuousWorkMs(session, now)
   const estimatedCheckout = getEstimatedCheckout(
     session,
@@ -289,6 +391,7 @@ export function useWorkSession() {
     now,
     workMs,
     breakMs,
+    openBreakMs,
     continuousWorkMs,
     estimatedCheckout,
     onBreak,
@@ -305,7 +408,10 @@ export function useWorkSession() {
     breakOut,
     checkOut,
     resetDay,
+    restoreSession,
+    replaceTodaySession,
     deleteBreak,
+    addBreak,
     updateStamp,
     updateBreakRange,
   }

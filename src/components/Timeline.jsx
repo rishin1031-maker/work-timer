@@ -437,12 +437,14 @@ export function Timeline({
   onUpdateStamp,
   onUpdateBreakRange,
   onDeleteBreak,
+  onAddBreak,
+  embedded = false,
 }) {
   if (!session.checkIn) {
     return (
-      <section className="panel">
-        <h2>Today</h2>
-        <p className="muted">No stamps yet. Check in to start tracking.</p>
+      <section className={embedded ? 'timeline-editor' : 'panel'}>
+        {!embedded ? <h2>Today</h2> : null}
+        <p className="muted">No stamps yet. Start work to begin tracking.</p>
       </section>
     )
   }
@@ -457,13 +459,13 @@ export function Timeline({
   )
 
   return (
-    <section className="panel">
-      <h2>Today</h2>
+    <section className={embedded ? 'timeline-editor' : 'panel'}>
+      {!embedded ? <h2>Today</h2> : null}
       <p className="muted edit-hint">
         Type times, or drag the break handles (left = in, right = out).
       </p>
       <ul className="timeline">
-        <StampCard title="Check in">
+        <StampCard title="Check-in / start work">
           <TimeAdjuster
             label="Time"
             iso={session.checkIn}
@@ -497,14 +499,16 @@ export function Timeline({
               ) : (
                 <>
                   <TimeAdjuster
-                    label="Break in"
+                    label="Break start"
                     iso={b.start}
                     field={{ type: 'breakStart', index: i }}
                     min={boundsByKey[startKey].min}
                     max={boundsByKey[startKey].max}
                     onUpdate={onUpdateStamp}
                   />
-                  <p className="muted break-open">On break — out not stamped yet</p>
+                  <p className="muted break-open">
+                    On break — end not stamped yet
+                  </p>
                 </>
               )}
             </StampCard>
@@ -512,7 +516,7 @@ export function Timeline({
         })}
 
         {session.checkOut ? (
-          <StampCard title="Check out">
+          <StampCard title="End workday">
             <TimeAdjuster
               label="Time"
               iso={session.checkOut}
@@ -524,6 +528,16 @@ export function Timeline({
           </StampCard>
         ) : null}
       </ul>
+
+      {onAddBreak ? (
+        <button
+          type="button"
+          className="btn btn-secondary add-break-btn"
+          onClick={onAddBreak}
+        >
+          Add another break
+        </button>
+      ) : null}
     </section>
   )
 }

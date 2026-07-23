@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { NotchAction } from './NotchAction'
 import { getQuoteForDay, refreshQuoteForDay } from '../utils/quotes'
 
-export function DailyQuote({ dateKey, companion }) {
+export function DailyQuote({ dateKey }) {
   const [quote, setQuote] = useState(() => getQuoteForDay(dateKey))
   const [animKey, setAnimKey] = useState(0)
   const [spinning, setSpinning] = useState(false)
@@ -20,23 +20,20 @@ export function DailyQuote({ dateKey, companion }) {
   }
 
   return (
-    <section className="quote-row">
-      {companion}
-      <div className="notch-card quote-card">
-        <NotchAction
-          variant="refresh"
-          label="Refresh quote"
-          onClick={handleRefresh}
-          spinning={spinning}
-        />
-        <div className="notch-shell quote-shell">
-          <p className="quote-label">Quote of the day</p>
-          <figure className="daily-quote" key={`${dateKey}-${animKey}`}>
-            <blockquote>“{quote.text}”</blockquote>
-            <figcaption>— {quote.author}</figcaption>
-          </figure>
-        </div>
+    <div className="notch-card quote-card">
+      <NotchAction
+        variant="refresh"
+        label="Refresh quote"
+        onClick={handleRefresh}
+        spinning={spinning}
+      />
+      <div className="notch-shell quote-shell">
+        <p className="quote-label">Quote of the day</p>
+        <figure className="daily-quote" key={`${dateKey}-${animKey}`}>
+          <blockquote>“{quote.text}”</blockquote>
+          <figcaption>— {quote.author}</figcaption>
+        </figure>
       </div>
-    </section>
+    </div>
   )
 }

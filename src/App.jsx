@@ -1,23 +1,20 @@
-import { lazy, Suspense, useState } from 'react'
-import { AutoRules } from './components/AutoRules'
-import { DailyQuote } from './components/DailyQuote'
-import { Controls } from './components/Controls'
-import { DayTimeline } from './components/DayTimeline'
-import { History } from './components/History'
+import { useRef, useState } from 'react'
+import { ActivityList } from './components/ActivityList'
+import { AppHeader } from './components/AppHeader'
+import { CurrentStatusCard } from './components/CurrentStatusCard'
+import { EditEntriesModal } from './components/EditEntriesModal'
+import { HistorySection } from './components/HistorySection'
 import { Modal } from './components/Modal'
-import { OverviewPanel } from './components/OverviewPanel'
-import { PrefsBar } from './components/PrefsBar'
-import { Stats } from './components/Stats'
-import { Timeline } from './components/Timeline'
+import { OptionalWidgets } from './components/OptionalWidgets'
+import { ProgressSummary } from './components/ProgressSummary'
+import { TimerActions } from './components/TimerActions'
+import { ToastNotification } from './components/ToastNotification'
 import { useMediaQuery } from './hooks/useMediaQuery'
 import { useSessionShortcuts } from './hooks/useSessionShortcuts'
 import { useSoftReminder } from './hooks/useSoftReminder'
+import { useToast } from './hooks/useToast'
 import { useWorkSession } from './hooks/useWorkSession'
 import { formatClock, formatDuration, formatShiftLabel } from './utils/time'
-
-const Companion = lazy(() =>
-  import('./components/Companion').then((mod) => ({ default: mod.Companion })),
-)
 
 export default function App() {
   const {
@@ -29,6 +26,7 @@ export default function App() {
     targetHours,
     workMs,
     breakMs,
+    openBreakMs,
     estimatedCheckout,
     onBreak,
     autoBreakActive,
@@ -44,29 +42,22 @@ export default function App() {
     breakOut,
     checkOut,
     resetDay,
-    deleteBreak,
-    updateStamp,
-    updateBreakRange,
+    restoreSession,
+    replaceTodaySession,
   } = useWorkSession()
 
   const isPhone = useMediaQuery('(max-width: 720px)')
-  const isWide = useMediaQuery('(min-width: 1100px)')
+  const isDesktop = useMediaQuery('(min-width: 1024px)')
+  const { toast, showToast, dismissToast } = useToast()
+
   const [shiftBlockedOpen, setShiftBlockedOpen] = useState(false)
   const [checkoutConfirmOpen, setCheckoutConfirmOpen] = useState(false)
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const [pendingShift, setPendingShift] = useState(null)
   const [checkoutFromShiftModal, setCheckoutFromShiftModal] = useState(false)
-  const [mobilePanel, setMobilePanel] = useState('today')
-  const [prefsOpen, setPrefsOpen] = useState(false)
-
-  const status = !checkedIn
-    ? 'Not checked in'
-    : checkedOut
-      ? 'Checked out'
-      : autoBreakActive
-        ? 'Auto break — 8h continuous work'
-        : onBreak
-          ? 'On break'
-          : 'Working'
+  const sessionSnapshotRef = useRef(null)
+  const editButtonRef = useRef(null)
 
   const dayTargetHours = session.targetHours ?? targetHours
   const remainingMs = dayTargetHours * 60 * 60 * 1000 - workMs
@@ -74,6 +65,46 @@ export default function App() {
   const pendingShiftLabel = pendingShift === 'night' ? 'night shift' : 'day shift'
   const checkingOutEarly = remainingMs > 0
   const estCheckout = checkedOut ? session.checkOut : estimatedCheckout
+
+  const companionMood = !checkedIn
+    ? 'idle'
+    : checkedOut
+      ? 'done'
+      : onBreak
+        ? 'break'
+        : 'working'
+
+  function snapshotSession() {
+    sessionSnapshotRef.current = session?.checkIn
+      ? {
+          ...session,
+          breaks: (session.breaks ?? []).map((b) => ({ ...b })),
+        }
+      : null
+  }
+
+  function handleStartWork() {
+    if (checkedIn) return
+    checkIn()
+    showToast('Work started')
+  }
+
+  function handleStartBreak() {
+    if (!checkedIn || checkedOut || onBreak) return
+    breakIn()
+    showToast('Break started')
+  }
+
+  function handleResumeWork() {
+    if (!onBreak) return
+    breakOut()
+    showToast('Back to work')
+  }
+
+  function openEditEntries() {
+    if (!session?.checkIn) return
+    setEditOpen(true)
+  }
 
   function closeShiftBlocked() {
     setShiftBlockedOpen(false)
@@ -91,14 +122,13 @@ export default function App() {
   }
 
   function handleCheckoutRequest() {
-    if (!checkedIn || checkedOut || onBreak) return
+    if (!checkedIn || checkedOut) return
     setCheckoutFromShiftModal(false)
     setPendingShift(null)
     setCheckoutConfirmOpen(true)
   }
 
   function handleCheckoutFromShiftModal() {
-    if (onBreak) return
     setShiftBlockedOpen(false)
     setCheckoutFromShiftModal(true)
     setCheckoutConfirmOpen(true)
@@ -120,20 +150,41 @@ export default function App() {
     setCheckoutFromShiftModal(false)
     setPendingShift(null)
     checkOut(switchTo ? { switchToShift: switchTo } : undefined)
+    showToast(
+      switchTo
+        ? `Workday ended · switched to ${pendingShiftLabel}`
+        : 'Workday ended',
+    )
+  }
+
+  function confirmReset() {
+    snapshotSession()
+    const snapshot = sessionSnapshotRef.current
+    resetDay()
+    setResetConfirmOpen(false)
+    showToast('Today’s entries were reset', {
+      undo: snapshot
+        ? () => {
+            restoreSession(snapshot)
+            showToast('Reset undone')
+          }
+        : undefined,
+      duration: 7000,
+    })
   }
 
   useSessionShortcuts({
     checkedIn,
     checkedOut,
     onBreak,
-    onCheckIn: checkIn,
-    onBreakIn: breakIn,
-    onBreakOut: breakOut,
+    onCheckIn: handleStartWork,
+    onBreakIn: handleStartBreak,
+    onBreakOut: handleResumeWork,
     onCheckOut: handleCheckoutRequest,
-    enabled: !shiftBlockedOpen && !checkoutConfirmOpen,
+    enabled: !shiftBlockedOpen && !checkoutConfirmOpen && !resetConfirmOpen && !editOpen,
   })
 
-  const { toast, dismissToast } = useSoftReminder({
+  const { toast: reminderToast, dismissToast: dismissReminder } = useSoftReminder({
     remainingMs,
     checkedIn,
     checkedOut,
@@ -141,224 +192,169 @@ export default function App() {
     dateKey: date,
   })
 
-  const companionMood = !checkedIn
-    ? 'idle'
-    : checkedOut
-      ? 'done'
-      : onBreak
-        ? 'break'
-        : 'working'
+  const activeToast = toast ?? (reminderToast
+    ? { message: reminderToast, undo: null }
+    : null)
 
-  const todayPanel = (
-    <Timeline
-      session={session}
-      onUpdateStamp={updateStamp}
-      onUpdateBreakRange={updateBreakRange}
-      onDeleteBreak={deleteBreak}
-    />
-  )
-
-  const historyPanel = (
-    <History
-      history={history}
-      today={{ date, session }}
-      todayWorkMs={workMs}
-      todayBreakMs={breakMs}
-      todayTargetHours={dayTargetHours}
-    />
-  )
+  function handleDismissToast() {
+    if (toast) dismissToast()
+    else dismissReminder()
+  }
 
   return (
     <div
-      className={`app${isPhone ? ' is-phone' : ''}${isWide ? ' is-wide' : ''}`}
+      className={`app${isPhone ? ' is-phone' : ''}${isDesktop ? ' is-desktop' : ''}`}
     >
-      <div className="top-chrome">
-        <div className="top-chrome-row">
-          <div className="header-title">
-            <p className="brand">Work Timer</p>
-            <h1>{formatShiftLabel(date, shift)}</h1>
-            <p className="status">{status}</p>
-          </div>
+      <AppHeader
+        dateLabel={formatShiftLabel(date, shift)}
+        now={now}
+        shift={shift}
+        theme={theme}
+        compactShift={isPhone}
+        onShiftChange={handleShiftChange}
+        onThemeToggle={toggleTheme}
+        onResetRequest={() => setResetConfirmOpen(true)}
+        canReset={checkedIn}
+      />
 
-          {isPhone ? (
-            <button
-              type="button"
-              className="prefs-disclosure"
-              onClick={() => setPrefsOpen((v) => !v)}
-              aria-expanded={prefsOpen}
-            >
-              {prefsOpen ? 'Hide settings' : 'Settings'}
-            </button>
-          ) : null}
+      <main className="app-main">
+        <CurrentStatusCard
+          checkedIn={checkedIn}
+          checkedOut={checkedOut}
+          onBreak={onBreak}
+          autoBreakActive={autoBreakActive}
+          workMs={workMs}
+          breakMs={breakMs}
+          openBreakMs={openBreakMs}
+          remainingMs={remainingMs}
+          estimatedCheckout={estimatedCheckout}
+          checkInIso={session.checkIn}
+          checkOutIso={session.checkOut}
+          targetHours={dayTargetHours}
+          theme={theme}
+          companionMood={companionMood}
+          onStartWork={handleStartWork}
+          onStartBreak={handleStartBreak}
+          onResumeWork={handleResumeWork}
+          onEndWorkday={handleCheckoutRequest}
+          showInlineActions={!isPhone}
+        />
 
-          <div className="controls-shell">
-            <Controls
+        <div className="app-columns">
+          <div className="app-col app-col-main">
+            <ProgressSummary
+              workMs={workMs}
+              breakMs={breakMs}
+              remainingMs={remainingMs}
+              targetHours={dayTargetHours}
+              prefTargetHours={targetHours}
+              onTargetHoursChange={setTargetHours}
+              targetHoursDisabled={checkedOut}
               checkedIn={checkedIn}
-              checkedOut={checkedOut}
-              onBreak={onBreak}
-              onCheckIn={checkIn}
-              onBreakIn={breakIn}
-              onBreakOut={breakOut}
-              onCheckOut={handleCheckoutRequest}
-              onReset={resetDay}
-            />
-          </div>
-
-          <div
-            className={`header-aside${isPhone && !prefsOpen ? ' is-collapsed' : ''}`}
-          >
-            <PrefsBar
+              session={session}
+              now={now}
+              windowStart={window.start}
+              windowEnd={window.end}
               shift={shift}
-              theme={theme}
-              onShiftChange={handleShiftChange}
-              onThemeToggle={toggleTheme}
+            />
+
+            <HistorySection
+              history={history}
+              today={{ date, session }}
+              todayWorkMs={workMs}
+              todayBreakMs={breakMs}
+              todayTargetHours={dayTargetHours}
             />
           </div>
+
+          <div className="app-col app-col-side">
+            <ActivityList
+              session={session}
+              now={now}
+              onEdit={openEditEntries}
+              editButtonRef={editButtonRef}
+            />
+
+            <OptionalWidgets dateKey={date} shift={shift} />
+          </div>
         </div>
-      </div>
+      </main>
 
-      <div className="workspace">
-        {isWide ? (
-          <aside className="rail rail-today" aria-label="Today’s stamps">
-            {todayPanel}
-          </aside>
-        ) : null}
-
-        <main className="main-flow">
-          <Stats
-            workMs={workMs}
-            breakMs={breakMs}
-            remainingMs={remainingMs}
-            estimatedCheckout={
-              checkedOut ? session.checkOut : estimatedCheckout
-            }
-            checkedIn={checkedIn}
-            checkedOut={checkedOut}
-          />
-
-          <DayTimeline
-            session={session}
-            now={now}
-            workMs={workMs}
-            breakMs={breakMs}
-            checkedIn={checkedIn}
-            windowStart={window.start}
-            windowEnd={window.end}
-            shift={shift}
-          />
-
-          <DailyQuote
-            dateKey={date}
-            companion={
-              <Suspense
-                fallback={<div className="companion companion-fallback" />}
-              >
-                <Companion mood={companionMood} theme={theme} />
-              </Suspense>
-            }
-          />
-
-          <OverviewPanel
-            now={now}
-            dateKey={date}
-            workMs={workMs}
-            breakMs={breakMs}
-            remainingMs={remainingMs}
-            targetHours={dayTargetHours}
-            prefTargetHours={targetHours}
-            onTargetHoursChange={setTargetHours}
-            targetHoursDisabled={checkedOut}
-            history={history}
-            checkedIn={checkedIn}
-          />
-
-          {isPhone ? (
-            <div
-              className="mobile-panel-tabs"
-              role="tablist"
-              aria-label="Session details"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mobilePanel === 'today'}
-                className={`mobile-tab${mobilePanel === 'today' ? ' active' : ''}`}
-                onClick={() => setMobilePanel('today')}
-              >
-                Today
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mobilePanel === 'history'}
-                className={`mobile-tab${mobilePanel === 'history' ? ' active' : ''}`}
-                onClick={() => setMobilePanel('history')}
-              >
-                History
-              </button>
-            </div>
-          ) : null}
-
-          {!isWide ? (
-            <div className={`panels${isPhone ? ` show-${mobilePanel}` : ''}`}>
-              <div className="panel-slot panel-today">{todayPanel}</div>
-              <div className="panel-slot panel-history">{historyPanel}</div>
-            </div>
-          ) : null}
-
-          <AutoRules shift={shift} />
-        </main>
-
-        {isWide ? (
-          <aside className="rail rail-history" aria-label="Last 30 days">
-            {historyPanel}
-          </aside>
-        ) : null}
-      </div>
-
-      {toast ? (
-        <div className="soft-toast" role="status">
-          <p>{toast}</p>
-          <button type="button" className="soft-toast-dismiss" onClick={dismissToast}>
-            Dismiss
-          </button>
-        </div>
+      {isPhone ? (
+        <TimerActions
+          checkedIn={checkedIn}
+          checkedOut={checkedOut}
+          onBreak={onBreak}
+          onStartWork={handleStartWork}
+          onStartBreak={handleStartBreak}
+          onResumeWork={handleResumeWork}
+          onEndWorkday={handleCheckoutRequest}
+          sticky
+        />
       ) : null}
+
+      <ToastNotification toast={activeToast} onDismiss={handleDismissToast} />
+
+      <EditEntriesModal
+        open={editOpen}
+        session={session}
+        dateKey={date}
+        shift={shift}
+        returnFocusRef={editButtonRef}
+        onClose={() => setEditOpen(false)}
+        onSaveSession={replaceTodaySession}
+        onSaved={(message) => showToast(message)}
+      />
+
+      <Modal
+        open={resetConfirmOpen}
+        title="Reset today?"
+        cancelLabel="Cancel"
+        confirmLabel="Reset"
+        danger
+        onCancel={() => setResetConfirmOpen(false)}
+        onConfirm={confirmReset}
+      >
+        <p>
+          This removes today’s check-in, breaks, and check-out entries for the
+          current shift day. You can undo this from the confirmation toast.
+        </p>
+      </Modal>
 
       <Modal
         open={shiftBlockedOpen}
         title="Cannot change shift"
         cancelLabel="Got it"
-        confirmLabel="Check out"
+        confirmLabel="End workday"
         danger
-        confirmDisabled={onBreak}
         onCancel={closeShiftBlocked}
         onConfirm={handleCheckoutFromShiftModal}
       >
         <p>
-          You are currently checked in on the {activeShiftLabel}. Check out
-          first before switching to {pendingShiftLabel}, so today’s session
-          stays on the correct timeline.
+          You are currently checked in on the {activeShiftLabel}. End the
+          workday first before switching to {pendingShiftLabel}, so today’s
+          session stays on the correct timeline.
         </p>
         {onBreak ? (
           <p className="modal-follow">
-            You are on break right now. Break out first, then you can check out
-            and change shift.
+            You are on break right now. Ending the workday will close the break
+            and then switch to {pendingShiftLabel}.
           </p>
         ) : (
           <p className="modal-follow">
-            You can check out here, then the app will switch to {pendingShiftLabel}.
+            You can end the workday here, then the app will switch to{' '}
+            {pendingShiftLabel}.
           </p>
         )}
       </Modal>
 
       <Modal
         open={checkoutConfirmOpen}
-        title={checkingOutEarly ? 'Checking out early' : 'Confirm check out'}
+        title={checkingOutEarly ? 'Ending early' : 'End workday?'}
         confirmLabel={
           checkoutFromShiftModal && pendingShift
-            ? 'Check out & switch'
-            : 'Check out'
+            ? 'End & switch'
+            : 'End workday'
         }
         cancelLabel="Cancel"
         danger
@@ -374,10 +370,7 @@ export default function App() {
               </strong>{' '}
               of target work time left
               {estCheckout ? (
-                <>
-                  {' '}
-                  (estimated check out {formatClock(estCheckout)})
-                </>
+                <> (estimated finish {formatClock(estCheckout)})</>
               ) : null}
               .
             </p>
@@ -391,7 +384,7 @@ export default function App() {
           <p>
             {checkoutFromShiftModal && pendingShift
               ? `End today’s session and switch to ${pendingShiftLabel}?`
-              : 'End today’s session now? Work and break totals will stop updating, and you’ll need to start a new day to check in again.'}
+              : 'End today’s session now? Work and break totals will stop updating.'}
           </p>
         )}
       </Modal>

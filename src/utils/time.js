@@ -186,6 +186,20 @@ export function formatDuration(ms) {
   return [hours, minutes, seconds].map((n) => String(n).padStart(2, '0')).join(':')
 }
 
+/** Human-readable duration, e.g. "5 minutes" or "2h 48m". */
+export function formatFriendlyDuration(ms) {
+  const totalMinutes = Math.max(0, Math.floor(ms / 60000))
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (hours === 0) {
+    return minutes === 1 ? '1 minute' : `${minutes} minutes`
+  }
+  if (minutes === 0) {
+    return hours === 1 ? '1h' : `${hours}h`
+  }
+  return `${hours}h ${minutes}m`
+}
+
 export function formatDateLabel(dateKey) {
   const [y, m, d] = dateKey.split('-').map(Number)
   const date = new Date(y, m - 1, d)
@@ -202,6 +216,14 @@ export function getBreakMs(breaks, now = Date.now()) {
     const end = b.end ? new Date(b.end).getTime() : now
     return sum + Math.max(0, end - new Date(b.start).getTime())
   }, 0)
+}
+
+/** Duration of the currently open break, or 0. */
+export function getOpenBreakMs(session, now = Date.now()) {
+  if (!isOnBreak(session)) return 0
+  const last = session.breaks[session.breaks.length - 1]
+  if (!last?.start) return 0
+  return Math.max(0, now - new Date(last.start).getTime())
 }
 
 export function getWorkMs(session, now = Date.now()) {
@@ -242,6 +264,173 @@ export function isSessionOrderValid(session) {
   }
 
   return true
+}
+
+export function cloneSession(session) {
+  if (!session) return null
+  return {
+    ...session,
+    breaks: (session.breaks ?? []).map((b) => ({ ...b })),
+  }
+}
+
+export function sessionsEqual(a, b) {
+  if (!a && !b) return true
+  if (!a || !b) return false
+  return JSON.stringify({
+    checkIn: a.checkIn,
+    checkOut: a.checkOut ?? null,
+    breaks: (a.breaks ?? []).map((br) => ({
+      start: br.start,
+      end: br.end ?? null,
+      auto: Boolean(br.auto),
+    })),
+  }) ===
+    JSON.stringify({
+      checkIn: b.checkIn,
+      checkOut: b.checkOut ?? null,
+      breaks: (b.breaks ?? []).map((br) => ({
+        start: br.start,
+        end: br.end ?? null,
+        auto: Boolean(br.auto),
+      })),
+    })
+}
+
+/**
+ * Field-level validation for the edit-entries draft.
+ * Returns { ok, errors } where errors has checkIn, checkOut, general,
+ * and breaks: { [index]: { start?, end?, general? } }.
+ */
+export function validateSessionEdits(session, { now = Date.now() } = {}) {
+  const errors = { breaks: {} }
+  let ok = true
+
+  function fail(path, message) {
+    ok = false
+    if (path.startsWith('breaks.')) {
+      const [, index, field] = path.split('.')
+      if (!errors.breaks[index]) errors.breaks[index] = {}
+      errors.breaks[index][field] = message
+    } else {
+      errors[path] = message
+    }
+  }
+
+  if (!session?.checkIn) {
+    fail('checkIn', 'Check-in time is required.')
+    return { ok: false, errors }
+  }
+
+  const checkInMs = new Date(session.checkIn).getTime()
+  if (Number.isNaN(checkInMs)) {
+    fail('checkIn', 'Enter a valid check-in time.')
+    return { ok: false, errors }
+  }
+
+  if (!session.checkOut && checkInMs > now) {
+    fail('checkIn', 'Check-in cannot be in the future.')
+  }
+
+  let prev = checkInMs
+  let prevLabel = 'check-in'
+  const seen = new Set()
+
+  ;(session.breaks ?? []).forEach((b, i) => {
+    if (!b.start) {
+      fail(`breaks.${i}.start`, 'Break start is required.')
+      return
+    }
+    const startMs = new Date(b.start).getTime()
+    if (Number.isNaN(startMs)) {
+      fail(`breaks.${i}.start`, 'Enter a valid break start time.')
+      return
+    }
+
+    const key = `${b.start}|${b.end ?? 'open'}`
+    if (seen.has(key)) {
+      fail(`breaks.${i}.general`, 'Duplicate break times are not allowed.')
+    }
+    seen.add(key)
+
+    if (startMs < prev) {
+      fail(
+        `breaks.${i}.start`,
+        `Break start must be after ${prevLabel}.`,
+      )
+    }
+    if (!session.checkOut && startMs > now) {
+      fail(`breaks.${i}.start`, 'Break start cannot be in the future.')
+    }
+
+    prev = Math.max(prev, startMs)
+    prevLabel = `break ${i + 1} start`
+
+    if (b.end) {
+      const endMs = new Date(b.end).getTime()
+      if (Number.isNaN(endMs)) {
+        fail(`breaks.${i}.end`, 'Enter a valid break end time.')
+        return
+      }
+      if (endMs < startMs) {
+        fail(`breaks.${i}.end`, 'Break end must be after break start.')
+      }
+      if (endMs === startMs) {
+        fail(`breaks.${i}.end`, 'Break must be longer than 0 minutes.')
+      }
+      if (!session.checkOut && endMs > now) {
+        fail(`breaks.${i}.end`, 'Break end cannot be in the future.')
+      }
+      if (endMs < prev && endMs >= startMs) {
+        // still chronological if end >= start; prev was start
+      }
+      prev = Math.max(prev, endMs)
+      prevLabel = `break ${i + 1} end`
+    }
+  })
+
+  if (session.checkOut) {
+    const outMs = new Date(session.checkOut).getTime()
+    if (Number.isNaN(outMs)) {
+      fail('checkOut', 'Enter a valid end time.')
+    } else if (outMs < prev) {
+      fail('checkOut', 'End workday must be after the last stamp.')
+    }
+  }
+
+  if (ok && !isSessionOrderValid(session)) {
+    fail('general', 'Times must stay in chronological order without overlaps.')
+  }
+
+  const workMs = getWorkMs(session, session.checkOut ? new Date(session.checkOut).getTime() : now)
+  const breakMs = getBreakMs(session.breaks ?? [], session.checkOut ? new Date(session.checkOut).getTime() : now)
+  if (workMs < 0 || breakMs < 0) {
+    fail('general', 'Work and break durations cannot be negative.')
+  }
+
+  return { ok, errors }
+}
+
+/** Suggest a non-overlapping completed break inside an available gap. */
+export function suggestBreakRange(session, now = Date.now()) {
+  if (!session?.checkIn) return null
+
+  const stamps = [new Date(session.checkIn).getTime()]
+  for (const b of session.breaks ?? []) {
+    if (b.start) stamps.push(new Date(b.start).getTime())
+    if (b.end) stamps.push(new Date(b.end).getTime())
+  }
+  if (session.checkOut) stamps.push(new Date(session.checkOut).getTime())
+
+  const lastStamp = Math.max(...stamps)
+  const endCap = session.checkOut ? new Date(session.checkOut).getTime() : now
+  if (endCap - lastStamp < 2 * 60 * 1000) return null
+
+  const breakEnd = Math.min(endCap - 60 * 1000, lastStamp + 16 * 60 * 1000)
+  const breakStart = Math.max(lastStamp + 60 * 1000, breakEnd - 15 * 60 * 1000)
+  if (breakEnd <= breakStart) return null
+
+  return { start: stampAt(breakStart), end: stampAt(breakEnd) }
 }
 
 export function pruneSessions(sessions, keepDays = 30) {

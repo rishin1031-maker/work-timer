@@ -44,7 +44,7 @@ export function useSessionShortcuts({
       }
 
       if (key === 'o') {
-        if (!checkedIn || checkedOut || onBreak) return
+        if (!checkedIn || checkedOut) return
         event.preventDefault()
         onCheckOut()
       }
