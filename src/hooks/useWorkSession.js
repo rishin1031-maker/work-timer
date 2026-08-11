@@ -214,6 +214,33 @@ export function useWorkSession() {
     return true
   }
 
+  function importAtsDay({ session: nextSession, targetHours: nextTarget } = {}) {
+    if (!nextSession?.checkIn) return false
+    if (!isSessionOrderValid(nextSession)) return false
+
+    const hours = clampTargetHours(
+      nextTarget ?? nextSession.targetHours ?? store.targetHours,
+    )
+
+    setStore((prev) => ({
+      ...prev,
+      targetHours: hours,
+      sessions: {
+        ...prev.sessions,
+        [date]: {
+          checkIn: nextSession.checkIn,
+          checkOut: nextSession.checkOut ?? null,
+          breaks: (nextSession.breaks ?? []).map((b) => ({ ...b })),
+          targetHours: hours,
+          shift,
+          source: nextSession.source ?? 'ats',
+        },
+      },
+    }))
+    setNow(Date.now())
+    return true
+  }
+
   function deleteBreak(index) {
     updateToday((current) => {
       if (!current.breaks[index]) return current
@@ -410,6 +437,7 @@ export function useWorkSession() {
     resetDay,
     restoreSession,
     replaceTodaySession,
+    importAtsDay,
     deleteBreak,
     addBreak,
     updateStamp,

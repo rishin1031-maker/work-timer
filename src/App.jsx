@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { ActivityList } from './components/ActivityList'
 import { AppHeader } from './components/AppHeader'
+import { AtsImportModal } from './components/AtsImportModal'
 import { CurrentStatusCard } from './components/CurrentStatusCard'
 import { EditEntriesModal } from './components/EditEntriesModal'
 import { HistorySection } from './components/HistorySection'
@@ -44,6 +45,7 @@ export default function App() {
     resetDay,
     restoreSession,
     replaceTodaySession,
+    importAtsDay,
   } = useWorkSession()
 
   const isPhone = useMediaQuery('(max-width: 720px)')
@@ -54,6 +56,7 @@ export default function App() {
   const [checkoutConfirmOpen, setCheckoutConfirmOpen] = useState(false)
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
+  const [atsImportOpen, setAtsImportOpen] = useState(false)
   const [pendingShift, setPendingShift] = useState(null)
   const [checkoutFromShiftModal, setCheckoutFromShiftModal] = useState(false)
   const sessionSnapshotRef = useRef(null)
@@ -173,6 +176,23 @@ export default function App() {
     })
   }
 
+  function handleAtsImport({ session: nextSession, targetHours: nextTarget }) {
+    snapshotSession()
+    const snapshot = sessionSnapshotRef.current
+    const hadSession = Boolean(snapshot?.checkIn)
+    const ok = importAtsDay({ session: nextSession, targetHours: nextTarget })
+    if (!ok) return false
+    showToast('ATS data imported into today', {
+      undo: () => {
+        if (hadSession) restoreSession(snapshot)
+        else resetDay()
+        showToast('ATS import undone')
+      },
+      duration: 8000,
+    })
+    return true
+  }
+
   useSessionShortcuts({
     checkedIn,
     checkedOut,
@@ -181,7 +201,7 @@ export default function App() {
     onBreakIn: handleStartBreak,
     onBreakOut: handleResumeWork,
     onCheckOut: handleCheckoutRequest,
-    enabled: !shiftBlockedOpen && !checkoutConfirmOpen && !resetConfirmOpen && !editOpen,
+    enabled: !shiftBlockedOpen && !checkoutConfirmOpen && !resetConfirmOpen && !editOpen && !atsImportOpen,
   })
 
   const { toast: reminderToast, dismissToast: dismissReminder } = useSoftReminder({
@@ -210,10 +230,10 @@ export default function App() {
         now={now}
         shift={shift}
         theme={theme}
-        compactShift={isPhone}
         onShiftChange={handleShiftChange}
         onThemeToggle={toggleTheme}
         onResetRequest={() => setResetConfirmOpen(true)}
+        onAtsImportRequest={() => setAtsImportOpen(true)}
         canReset={checkedIn}
       />
 
@@ -240,24 +260,33 @@ export default function App() {
           showInlineActions={!isPhone}
         />
 
+        <div className="app-top-pair">
+          <ProgressSummary
+            workMs={workMs}
+            breakMs={breakMs}
+            remainingMs={remainingMs}
+            targetHours={dayTargetHours}
+            prefTargetHours={targetHours}
+            onTargetHoursChange={setTargetHours}
+            targetHoursDisabled={checkedOut}
+            checkedIn={checkedIn}
+            session={session}
+            now={now}
+            windowStart={window.start}
+            windowEnd={window.end}
+            shift={shift}
+          />
+
+          <ActivityList
+            session={session}
+            now={now}
+            onEdit={openEditEntries}
+            editButtonRef={editButtonRef}
+          />
+        </div>
+
         <div className="app-columns">
           <div className="app-col app-col-main">
-            <ProgressSummary
-              workMs={workMs}
-              breakMs={breakMs}
-              remainingMs={remainingMs}
-              targetHours={dayTargetHours}
-              prefTargetHours={targetHours}
-              onTargetHoursChange={setTargetHours}
-              targetHoursDisabled={checkedOut}
-              checkedIn={checkedIn}
-              session={session}
-              now={now}
-              windowStart={window.start}
-              windowEnd={window.end}
-              shift={shift}
-            />
-
             <HistorySection
               history={history}
               today={{ date, session }}
@@ -268,13 +297,6 @@ export default function App() {
           </div>
 
           <div className="app-col app-col-side">
-            <ActivityList
-              session={session}
-              now={now}
-              onEdit={openEditEntries}
-              editButtonRef={editButtonRef}
-            />
-
             <OptionalWidgets dateKey={date} shift={shift} />
           </div>
         </div>
@@ -304,6 +326,14 @@ export default function App() {
         onClose={() => setEditOpen(false)}
         onSaveSession={replaceTodaySession}
         onSaved={(message) => showToast(message)}
+      />
+
+      <AtsImportModal
+        open={atsImportOpen}
+        shift={shift}
+        hasExistingSession={checkedIn}
+        onClose={() => setAtsImportOpen(false)}
+        onImport={handleAtsImport}
       />
 
       <Modal

@@ -7,7 +7,7 @@ export function ShiftSelector({ shift, onShiftChange, compact = false }) {
     <div
       className={`shift-selector${compact ? ' is-compact' : ''}`}
       role="group"
-      aria-label="Shift"
+      aria-label="Work shift"
       ref={trackRef}
     >
       <span className="pill-thumb" ref={thumbRef} aria-hidden="true" />

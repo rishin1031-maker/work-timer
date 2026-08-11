@@ -14,10 +14,10 @@ export function AppHeader({
   now,
   shift,
   theme,
-  compactShift = false,
   onShiftChange,
   onThemeToggle,
   onResetRequest,
+  onAtsImportRequest,
   canReset,
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -25,6 +25,7 @@ export function AppHeader({
   const menuId = useId()
   const clockMs = now ?? Date.now()
   const clock = formatLiveClock(clockMs)
+  const themeLabel = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
 
   useEffect(() => {
     if (!menuOpen) return undefined
@@ -63,11 +64,33 @@ export function AppHeader({
       </div>
 
       <div className="app-header-actions">
-        <ShiftSelector
-          shift={shift}
-          compact={compactShift}
-          onShiftChange={onShiftChange}
-        />
+        <button
+          type="button"
+          className="btn-icon theme-toggle-btn"
+          onClick={onThemeToggle}
+          aria-label={themeLabel}
+          title={themeLabel}
+        >
+          {theme === 'dark' ? (
+            <svg viewBox="0 0 24 24" className="theme-toggle-icon" aria-hidden="true">
+              <circle cx="12" cy="12" r="4.25" fill="currentColor" />
+              <path
+                d="M12 2.75v2M12 19.25v2M2.75 12h2M19.25 12h2M5.05 5.05l1.4 1.4M17.55 17.55l1.4 1.4M5.05 18.95l1.4-1.4M17.55 6.45l1.4-1.4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+              />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" className="theme-toggle-icon" aria-hidden="true">
+              <path
+                d="M15.1 3.6A8.5 8.5 0 1 0 20.4 14a6.8 6.8 0 0 1-5.3-10.4Z"
+                fill="currentColor"
+              />
+            </svg>
+          )}
+        </button>
 
         <div className="header-menu" ref={menuRef}>
           <button
@@ -85,17 +108,32 @@ export function AppHeader({
 
           {menuOpen ? (
             <div className="header-menu-panel" id={menuId} role="menu">
+              <div className="header-menu-section" role="none">
+                <p className="header-menu-label" id={`${menuId}-shift-label`}>
+                  Work shift
+                </p>
+                <ShiftSelector
+                  shift={shift}
+                  compact
+                  onShiftChange={(next) => {
+                    onShiftChange(next)
+                    setMenuOpen(false)
+                  }}
+                />
+              </div>
+
               <button
                 type="button"
                 role="menuitem"
                 className="header-menu-item"
                 onClick={() => {
                   setMenuOpen(false)
-                  onThemeToggle()
+                  onAtsImportRequest?.()
                 }}
               >
-                {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+                Import ATS data…
               </button>
+
               <button
                 type="button"
                 role="menuitem"

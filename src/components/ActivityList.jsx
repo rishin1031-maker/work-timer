@@ -72,7 +72,12 @@ function buildActivities(session, now) {
   )
 }
 
-export function ActivityList({ session, now = Date.now(), onEdit, editButtonRef }) {
+export function ActivityList({
+  session,
+  now = Date.now(),
+  onEdit,
+  editButtonRef,
+}) {
   const activities = buildActivities(session, now)
 
   return (
@@ -89,49 +94,55 @@ export function ActivityList({ session, now = Date.now(), onEdit, editButtonRef 
             ref={editButtonRef}
             onClick={() => onEdit?.()}
           >
-            <span className="edit-icon" aria-hidden="true">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 16 16"
+            <svg
+              viewBox="0 0 24 24"
+              className="activity-edit-icon"
+              aria-hidden="true"
+            >
+              <path
+                d="M4.5 19.5h3.1L17.8 9.3a1.5 1.5 0 0 0 0-2.1l-1-1a1.5 1.5 0 0 0-2.1 0L4.5 16.4v3.1Z"
                 fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </span>
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M13.2 7.5l3.3 3.3"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+              />
+            </svg>
             Edit entries
           </button>
         ) : null}
       </div>
 
-      {activities.length === 0 ? (
-        <p className="muted empty-state">
-          No activity yet. Start work to begin tracking.
-        </p>
-      ) : (
-        <ol className="activity-timeline">
-          {activities.map((item) => (
-            <li
-              key={item.id}
-              className={`activity-item kind-${item.kind}${item.ongoing ? ' is-ongoing' : ''}`}
-            >
-              <span className="activity-rail" aria-hidden="true">
-                <span className="activity-icon" />
-              </span>
-              <div className="activity-content">
-                <time dateTime={item.iso}>{formatClock(item.iso)}</time>
-                <span className="activity-label">{item.label}</span>
-              </div>
-            </li>
-          ))}
-        </ol>
-      )}
+      <div className="activity-list-body">
+        {activities.length === 0 ? (
+          <p className="muted empty-state">
+            No activity yet. Start work to begin tracking.
+          </p>
+        ) : (
+          <ol className="activity-timeline">
+            {activities.map((item) => (
+              <li
+                key={item.id}
+                className={`activity-item kind-${item.kind}${item.ongoing ? ' is-ongoing' : ''}`}
+              >
+                <span className="activity-rail" aria-hidden="true">
+                  <span className="activity-icon" />
+                </span>
+                <div className="activity-content">
+                  <time dateTime={item.iso}>{formatClock(item.iso)}</time>
+                  <span className="activity-label">{item.label}</span>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
     </section>
   )
 }
