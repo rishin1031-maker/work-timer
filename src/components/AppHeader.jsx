@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { useAtsAuth } from '../hooks/useAtsAuth'
 import { ShiftSelector } from './ShiftSelector'
 
 function formatLiveClock(ms) {
@@ -26,6 +27,8 @@ export function AppHeader({
   const clockMs = now ?? Date.now()
   const clock = formatLiveClock(clockMs)
   const themeLabel = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
+  const atsAuth = useAtsAuth({ refreshOnMount: true })
+  const atsName = atsAuth?.name || atsAuth?.email || ''
 
   useEffect(() => {
     if (!menuOpen) return undefined
@@ -64,6 +67,18 @@ export function AppHeader({
       </div>
 
       <div className="app-header-actions">
+        {atsName ? (
+          <button
+            type="button"
+            className="header-ats-user"
+            onClick={() => onAtsImportRequest?.()}
+            title={atsAuth?.email ? `ATS · ${atsAuth.email}` : 'Import / sync ATS'}
+          >
+            <span className="header-ats-label">ATS</span>
+            <span className="header-ats-name">{atsName}</span>
+          </button>
+        ) : null}
+
         <button
           type="button"
           className="btn-icon theme-toggle-btn"
@@ -131,7 +146,7 @@ export function AppHeader({
                   onAtsImportRequest?.()
                 }}
               >
-                Import ATS data…
+                Import / sync ATS…
               </button>
 
               <button
