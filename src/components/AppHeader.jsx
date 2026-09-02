@@ -19,6 +19,8 @@ export function AppHeader({
   onThemeToggle,
   onResetRequest,
   onAtsImportRequest,
+  onAtsResync,
+  atsResyncing = false,
   canReset,
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -29,6 +31,7 @@ export function AppHeader({
   const themeLabel = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
   const atsAuth = useAtsAuth({ refreshOnMount: true })
   const atsName = atsAuth?.name || atsAuth?.email || ''
+  const canResync = Boolean(atsAuth?.session && onAtsResync)
 
   useEffect(() => {
     if (!menuOpen) return undefined
@@ -68,15 +71,53 @@ export function AppHeader({
 
       <div className="app-header-actions">
         {atsName ? (
-          <button
-            type="button"
-            className="header-ats-user"
-            onClick={() => onAtsImportRequest?.()}
-            title={atsAuth?.email ? `ATS · ${atsAuth.email}` : 'Import / sync ATS'}
-          >
-            <span className="header-ats-label">ATS</span>
-            <span className="header-ats-name">{atsName}</span>
-          </button>
+          <div className="header-ats-group">
+            <button
+              type="button"
+              className="header-ats-user"
+              onClick={() => onAtsImportRequest?.()}
+              title={atsAuth?.email ? `ATS · ${atsAuth.email}` : 'Import / sync ATS'}
+            >
+              <span className="header-ats-label">ATS</span>
+              <span className="header-ats-name">{atsName}</span>
+            </button>
+            {canResync ? (
+              <button
+                type="button"
+                className="header-ats-resync"
+                onClick={() => onAtsResync?.()}
+                disabled={atsResyncing}
+                aria-busy={atsResyncing}
+                aria-label={atsResyncing ? 'Re-syncing ATS' : 'Re-sync ATS today'}
+                title="Re-sync today’s ATS punches"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className={`header-ats-resync-icon${atsResyncing ? ' is-spinning' : ''}`}
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M19.5 12a7.5 7.5 0 1 1-2.1-5.2"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M19.5 4.5v4.2h-4.2"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span className="header-ats-resync-label">
+                  {atsResyncing ? 'Syncing…' : 'Re-sync'}
+                </span>
+              </button>
+            ) : null}
+          </div>
         ) : null}
 
         <button
@@ -148,6 +189,21 @@ export function AppHeader({
               >
                 Import / sync ATS…
               </button>
+
+              {canResync ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="header-menu-item"
+                  disabled={atsResyncing}
+                  onClick={() => {
+                    setMenuOpen(false)
+                    onAtsResync?.()
+                  }}
+                >
+                  {atsResyncing ? 'Re-syncing ATS…' : 'Re-sync ATS today'}
+                </button>
+              ) : null}
 
               <button
                 type="button"

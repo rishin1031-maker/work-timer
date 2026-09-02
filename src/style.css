@@ -1638,11 +1638,19 @@ input:focus-visible,
   color: var(--muted);
 }
 
+.header-ats-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: min(22rem, 52vw);
+}
+
 .header-ats-user {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  max-width: min(12rem, 36vw);
+  min-width: 0;
+  max-width: min(12rem, 34vw);
   min-height: 2.4rem;
   padding: 0.3rem 0.7rem 0.3rem 0.45rem;
   border: 1px solid var(--border);
@@ -1674,6 +1682,60 @@ input:focus-visible,
   white-space: nowrap;
   font-size: 0.82rem;
   font-weight: 650;
+}
+
+.header-ats-resync {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  min-height: 2.4rem;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.header-ats-resync:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+}
+
+.header-ats-resync:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.header-ats-resync-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.header-ats-resync-icon.is-spinning {
+  animation: ats-resync-spin 0.8s linear infinite;
+}
+
+@keyframes ats-resync-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 720px) {
+  .header-ats-resync-label {
+    display: none;
+  }
+
+  .header-ats-resync {
+    width: 2.4rem;
+    padding: 0;
+    justify-content: center;
+  }
 }
 
 .ats-sync-panel,

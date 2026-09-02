@@ -16,6 +16,7 @@ import { useSoftReminder } from './hooks/useSoftReminder'
 import { useToast } from './hooks/useToast'
 import { useWorkSession } from './hooks/useWorkSession'
 import { formatClock, formatDuration, formatShiftLabel } from './utils/time'
+import { syncAtsToday } from './utils/zilmoneyApi'
 
 export default function App() {
   const {
@@ -57,6 +58,7 @@ export default function App() {
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [atsImportOpen, setAtsImportOpen] = useState(false)
+  const [atsResyncing, setAtsResyncing] = useState(false)
   const [pendingShift, setPendingShift] = useState(null)
   const [checkoutFromShiftModal, setCheckoutFromShiftModal] = useState(false)
   const sessionSnapshotRef = useRef(null)
@@ -193,6 +195,33 @@ export default function App() {
     return true
   }
 
+  async function handleAtsResync() {
+    if (atsResyncing) return
+    setAtsResyncing(true)
+    try {
+      const result = await syncAtsToday({
+        shift,
+        refreshSync: true,
+      })
+      const ok = handleAtsImport({
+        session: result.session,
+        targetHours: result.targetHours,
+      })
+      if (!ok) {
+        showToast('Could not apply the re-synced ATS session.')
+      }
+    } catch (error) {
+      if (error?.code === 'unauthorized') {
+        showToast('ATS session expired — sign in again.')
+        setAtsImportOpen(true)
+      } else {
+        showToast(error?.message || 'ATS re-sync failed.')
+      }
+    } finally {
+      setAtsResyncing(false)
+    }
+  }
+
   useSessionShortcuts({
     checkedIn,
     checkedOut,
@@ -234,6 +263,8 @@ export default function App() {
         onThemeToggle={toggleTheme}
         onResetRequest={() => setResetConfirmOpen(true)}
         onAtsImportRequest={() => setAtsImportOpen(true)}
+        onAtsResync={handleAtsResync}
+        atsResyncing={atsResyncing}
         canReset={checkedIn}
       />
 
