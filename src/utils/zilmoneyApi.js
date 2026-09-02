@@ -1,13 +1,12 @@
 import { parseAtsImport } from './atsImport'
 
 /**
- * In Vite dev we proxy through same-origin `/zilmoney-api` to avoid CORS.
- * ZilMoney auth is cookie-based (withCredentials), not a Bearer token in the body.
- * Override anytime with VITE_ZILMONEY_API_BASE (e.g. a Cloudflare Worker proxy).
+ * Same-origin `/zilmoney-api` avoids CORS:
+ * - Vite dev/preview: proxied in vite.config.js
+ * - Cloudflare Pages: proxied by functions/zilmoney-api/[[path]].js
+ * Override with VITE_ZILMONEY_API_BASE when hosting elsewhere.
  */
-const API_BASE =
-  import.meta.env.VITE_ZILMONEY_API_BASE ||
-  (import.meta.env.DEV ? '/zilmoney-api' : 'https://api.hr.zilmoney.com/api')
+const API_BASE = import.meta.env.VITE_ZILMONEY_API_BASE || '/zilmoney-api'
 
 const AUTH_KEY = 'work-timer:ats-auth:v1'
 const EMAIL_KEY = 'work-timer:ats-email:v1'
@@ -166,9 +165,7 @@ async function apiFetch(path, { method = 'GET', body } = {}) {
     })
   } catch {
     throw new Error(
-      import.meta.env.DEV
-        ? 'Could not reach the ATS proxy. Restart `npm run dev` so the Vite /zilmoney-api proxy is active.'
-        : 'Could not reach ZilMoney API (network/CORS). Set VITE_ZILMONEY_API_BASE to a CORS-enabled proxy such as your desk-time worker.',
+      'Could not reach the ATS proxy. On Cloudflare Pages, redeploy so /zilmoney-api is available. Elsewhere set VITE_ZILMONEY_API_BASE to a CORS cookie proxy.',
     )
   }
 

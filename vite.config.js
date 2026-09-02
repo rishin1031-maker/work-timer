@@ -38,4 +38,18 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    proxy: {
+      '/zilmoney-api': {
+        target: 'https://api.hr.zilmoney.com',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/zilmoney-api/, '/api'),
+        cookieDomainRewrite: '',
+        configure: (proxy) => {
+          proxy.on('proxyRes', rewriteUpstreamCookies)
+        },
+      },
+    },
+  },
 })
