@@ -1,11 +1,12 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
       "source": "/zilmoney-api/:path*",
-      "destination": "/api/ats/:path*"
+      "destination": "https://api.hr.zilmoney.com/api/:path*"
     },
     {
-      "source": "/((?!api/|zilmoney-api/).*)",
+      "source": "/((?!zilmoney-api/).*)",
       "destination": "/index.html"
     }
   ]

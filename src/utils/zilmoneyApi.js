@@ -2,9 +2,11 @@ import { parseAtsImport } from './atsImport'
 
 /**
  * Same-origin `/zilmoney-api` avoids CORS:
- * - Vite dev/preview: proxied in vite.config.js
- * - Cloudflare Pages: proxied by functions/zilmoney-api/[[path]].js
- * Override with VITE_ZILMONEY_API_BASE when hosting elsewhere.
+ * - Vite dev: proxied in vite.config.js
+ * - Vercel: vercel.json rewrites /zilmoney-api → api.hr.zilmoney.com/api
+ *   (plain Vite cannot host /api serverless functions)
+ * - Cloudflare Pages: functions/zilmoney-api/[[path]].js
+ * Override with VITE_ZILMONEY_API_BASE when needed.
  */
 const API_BASE = import.meta.env.VITE_ZILMONEY_API_BASE || '/zilmoney-api'
 
@@ -184,7 +186,7 @@ async function apiFetch(path, { method = 'GET', body } = {}) {
     })
   } catch {
     throw new Error(
-      'Could not reach the ATS proxy at /zilmoney-api. Redeploy to Vercel (api/zilmoney-api) or Cloudflare Pages (functions/zilmoney-api).',
+      'Could not reach the ATS proxy at /zilmoney-api. Redeploy so Vercel rewrites that path to api.hr.zilmoney.com.',
     )
   }
 
