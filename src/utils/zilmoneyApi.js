@@ -137,14 +137,33 @@ async function parseJsonResponse(response) {
   return data
 }
 
+function stringifyErrorValue(value) {
+  if (value == null) return null
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (typeof value === 'object') {
+    return (
+      value.message ||
+      value.error ||
+      value.detail ||
+      value.code ||
+      null
+    )
+  }
+  return null
+}
+
 function errorMessage(data, fallback) {
   if (!data) return fallback
   if (typeof data === 'string') return data
   return (
-    data.message ||
-    data.error ||
-    data.detail ||
-    data?.errors?.[0]?.message ||
+    stringifyErrorValue(data.message) ||
+    stringifyErrorValue(data.error) ||
+    stringifyErrorValue(data.detail) ||
+    stringifyErrorValue(data?.errors?.[0]) ||
+    (data?.error?.code === 'NOT_FOUND'
+      ? 'ATS proxy not found on this host. Redeploy so /zilmoney-api is routed to the Vercel API.'
+      : null) ||
     fallback
   )
 }
@@ -165,7 +184,7 @@ async function apiFetch(path, { method = 'GET', body } = {}) {
     })
   } catch {
     throw new Error(
-      'Could not reach the ATS proxy. On Cloudflare Pages, redeploy so /zilmoney-api is available. Elsewhere set VITE_ZILMONEY_API_BASE to a CORS cookie proxy.',
+      'Could not reach the ATS proxy at /zilmoney-api. Redeploy to Vercel (api/zilmoney-api) or Cloudflare Pages (functions/zilmoney-api).',
     )
   }
 

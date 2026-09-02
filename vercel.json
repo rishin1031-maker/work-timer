@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/zilmoney-api/:path*",
+      "destination": "/api/zilmoney-api/:path*"
+    }
+  ]
+}
