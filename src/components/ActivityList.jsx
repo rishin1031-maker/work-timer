@@ -3,73 +3,110 @@ import {
   formatFriendlyDuration,
 } from '../utils/time'
 
-function buildActivities(session, now) {
+/**
+ * Build chronological work/break sessions with each segment's total duration.
+ * Work sessions are the stretches between check-in, breaks, and check-out.
+ */
+function buildSessions(session, now) {
   if (!session?.checkIn) return []
 
-  const items = [
-    {
-      id: 'check-in',
-      iso: session.checkIn,
-      label: 'Started work',
-      kind: 'work',
-      ongoing: false,
-    },
-  ]
+  const checkInMs = new Date(session.checkIn).getTime()
+  const checkOutMs = session.checkOut
+    ? new Date(session.checkOut).getTime()
+    : null
+  const endBoundary = checkOutMs ?? now
+  const breaks = [...(session.breaks ?? [])].sort(
+    (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
+  )
 
-  ;(session.breaks ?? []).forEach((b, i) => {
-    const isOpen = !b.end
-    items.push({
-      id: `break-start-${i}`,
-      iso: b.start,
-      label: isOpen
-        ? `Break in progress · ${formatFriendlyDuration(
-            Math.max(0, now - new Date(b.start).getTime()),
-          )}`
-        : b.auto
-          ? 'Started break (auto)'
-          : 'Started break',
-      kind: 'break',
-      ongoing: isOpen,
-      breakIndex: i,
-    })
-    if (b.end) {
+  const items = []
+  let cursor = checkInMs
+  let workIndex = 0
+
+  for (let i = 0; i < breaks.length; i += 1) {
+    const br = breaks[i]
+    const breakStart = new Date(br.start).getTime()
+    const breakEnd = br.end ? new Date(br.end).getTime() : null
+
+    if (breakStart > cursor) {
+      workIndex += 1
+      const durationMs = Math.max(0, breakStart - cursor)
       items.push({
-        id: `break-end-${i}`,
-        iso: b.end,
-        label: 'Resumed work',
+        id: `work-${workIndex}`,
         kind: 'work',
+        label: workIndex === 1 ? 'Work session' : `Work session ${workIndex}`,
+        startIso: new Date(cursor).toISOString(),
+        endIso: new Date(breakStart).toISOString(),
+        durationMs,
         ongoing: false,
-        breakIndex: i,
       })
     }
-  })
 
-  if (session.checkOut) {
+    const breakDurationEnd = breakEnd ?? now
     items.push({
-      id: 'check-out',
-      iso: session.checkOut,
-      label: 'Ended workday',
-      kind: 'done',
-      ongoing: false,
+      id: `break-${i}`,
+      kind: 'break',
+      label: br.auto
+        ? breakEnd
+          ? 'Break (auto)'
+          : 'Break in progress (auto)'
+        : breakEnd
+          ? 'Break'
+          : 'Break in progress',
+      startIso: br.start,
+      endIso: br.end,
+      durationMs: Math.max(0, breakDurationEnd - breakStart),
+      ongoing: !breakEnd,
     })
-  } else if (session.checkIn && !session.breaks?.some((b) => !b.end)) {
-    const last = items[items.length - 1]
-    if (last && last.kind === 'work') {
-      last.ongoing = true
-      last.label =
-        last.id === 'check-in'
-          ? `Work in progress · ${formatFriendlyDuration(
-              Math.max(0, now - new Date(session.checkIn).getTime()),
-            )}`
-          : `Work in progress · ${formatFriendlyDuration(
-              Math.max(0, now - new Date(last.iso).getTime()),
-            )}`
+
+    if (breakEnd) {
+      cursor = breakEnd
+    } else {
+      cursor = null
+      break
     }
   }
 
-  return items.sort(
-    (a, b) => new Date(a.iso).getTime() - new Date(b.iso).getTime(),
-  )
+  if (cursor != null && endBoundary > cursor) {
+    workIndex += 1
+    const ongoing = !checkOutMs
+    items.push({
+      id: `work-${workIndex}`,
+      kind: 'work',
+      label:
+        workIndex === 1
+          ? ongoing
+            ? 'Work in progress'
+            : 'Work session'
+          : ongoing
+            ? `Work session ${workIndex} · in progress`
+            : `Work session ${workIndex}`,
+      startIso: new Date(cursor).toISOString(),
+      endIso: checkOutMs ? new Date(checkOutMs).toISOString() : null,
+      durationMs: Math.max(0, endBoundary - cursor),
+      ongoing,
+    })
+  }
+
+  if (checkOutMs) {
+    items.push({
+      id: 'check-out',
+      kind: 'done',
+      label: 'Ended workday',
+      startIso: session.checkOut,
+      endIso: null,
+      durationMs: null,
+      ongoing: false,
+    })
+  }
+
+  return items
+}
+
+function formatRange(startIso, endIso, ongoing) {
+  const start = formatClock(startIso)
+  if (ongoing || !endIso) return `${start} – now`
+  return `${start} – ${formatClock(endIso)}`
 }
 
 export function ActivityList({
@@ -78,14 +115,14 @@ export function ActivityList({
   onEdit,
   editButtonRef,
 }) {
-  const activities = buildActivities(session, now)
+  const activities = buildSessions(session, now)
 
   return (
     <section className="section-card activity-list">
       <div className="section-heading">
         <div>
           <h2>Today’s activity</h2>
-          <p className="section-sub">Chronological session timeline</p>
+          <p className="section-sub">Each session with total time</p>
         </div>
         {session?.checkIn ? (
           <button
@@ -135,8 +172,19 @@ export function ActivityList({
                   <span className="activity-icon" />
                 </span>
                 <div className="activity-content">
-                  <time dateTime={item.iso}>{formatClock(item.iso)}</time>
-                  <span className="activity-label">{item.label}</span>
+                  <div className="activity-row">
+                    <span className="activity-label">{item.label}</span>
+                    {item.durationMs != null ? (
+                      <span className="activity-duration">
+                        {formatFriendlyDuration(item.durationMs)}
+                      </span>
+                    ) : null}
+                  </div>
+                  <time dateTime={item.startIso}>
+                    {item.kind === 'done'
+                      ? formatClock(item.startIso)
+                      : formatRange(item.startIso, item.endIso, item.ongoing)}
+                  </time>
                 </div>
               </li>
             ))}
